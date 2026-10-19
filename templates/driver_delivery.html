@@ -1,0 +1,161 @@
+{% extends "base.html" %}
+
+{% block title %}Delivering Order #{{ order.id }} - Driver View{% endblock %}
+
+{% block content %}
+<div class="row g-4 mb-5">
+    <div class="col-12">
+        <div class="d-flex flex-wrap justify-content-between align-items-center gap-3">
+            <div>
+                <div class="d-flex align-items-center gap-2 mb-1">
+                    <h2 class="fw-bold mb-0 text-dark">Delivering Order #{{ order.id }}</h2>
+                    <span class="status-pill status-Picked-Up">
+                        <i class="bi bi-truck"></i> En Route
+                    </span>
+                </div>
+                <p class="text-muted small mb-0">Your live GPS location is being broadcast to the customer in real-time.</p>
+            </div>
+            <a href="{{ url_for('driver_dashboard') }}" class="btn btn-outline-primary btn-sm">
+                <i class="bi bi-arrow-left"></i> Driver Dashboard
+            </a>
+        </div>
+    </div>
+
+    <!-- Left Column: Customer & Delivery Confirmation -->
+    <div class="col-lg-5">
+        <!-- Live GPS Broadcast Card -->
+        <div class="dashboard-card shadow-sm mb-4 border-start border-4 border-success bg-white">
+            <div class="d-flex align-items-center justify-content-between mb-2">
+                <div class="d-flex align-items-center gap-2 text-success fw-bold">
+                    <span class="spinner-grow spinner-grow-sm text-success" role="status"></span>
+                    <span>Live Location Sharing Active</span>
+                </div>
+                <span class="badge bg-success-subtle text-success rounded-pill px-3 py-1 small">WebSocket</span>
+            </div>
+            <p class="small text-muted mb-0" id="driver-gps-status">
+                Your browser is streaming live vehicle coordinates directly to the customer's map.
+            </p>
+        </div>
+
+        <!-- Destination Details -->
+        <div class="dashboard-card shadow-sm mb-4">
+            <h5 class="fw-bold mb-3 text-dark border-bottom pb-2">
+                <i class="bi bi-geo-alt-fill text-danger me-2"></i>Destination Details
+            </h5>
+            
+            <div class="mb-3">
+                <label class="text-muted small d-block">Customer Recipient</label>
+                <span class="fs-5 fw-bold text-dark">{{ order.customer_name }}</span>
+            </div>
+
+            <div class="mb-3">
+                <label class="text-muted small d-block">Dropoff Street Address</label>
+                <div class="p-2 rounded bg-light border text-dark fw-semibold">
+                    <i class="bi bi-house-door me-1 text-secondary"></i>{{ order.customer_address }}
+                </div>
+            </div>
+
+            <div class="mb-4">
+                <label class="text-muted small d-block">Customer Phone</label>
+                <a href="tel:{{ order.customer_phone }}" class="btn btn-outline-primary btn-sm d-inline-flex align-items-center gap-2">
+                    <i class="bi bi-telephone-fill"></i> Call {{ order.customer_phone }}
+                </a>
+            </div>
+
+            <div class="mb-4">
+                <div class="d-flex justify-content-between align-items-center p-2 rounded bg-light border">
+                    <span class="text-muted small">Total to Collect:</span>
+                    <span class="fs-5 fw-extrabold text-success">${{ "%.2f"|format(order.total_price) }}</span>
+                </div>
+                <small class="text-muted d-block mt-1">Payment is collected as Cash on Delivery.</small>
+            </div>
+
+            <!-- Complete Delivery Button -->
+            <form action="{{ url_for('driver_complete_delivery', order_id=order.id) }}" method="POST" onsubmit="return confirm('Confirm that this order has been handed over and delivered to the customer?');">
+                <button type="submit" class="btn btn-success btn-lg w-100 py-3 fw-bold fs-6">
+                    <i class="bi bi-check2-circle me-1"></i> Confirm Handed Over & Delivered
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Right Column: Interactive Map -->
+    <div class="col-lg-7">
+        <div class="dashboard-card shadow-sm p-3 h-100">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <h5 class="fw-bold mb-0 text-dark">
+                    <i class="bi bi-map-fill text-success me-2"></i>Live Route Navigation
+                </h5>
+                <span class="badge bg-light text-dark border">Leaflet / OpenStreetMap</span>
+            </div>
+
+            <div id="driver-map" style="height: 480px; border-radius: var(--radius-md); background: #eee;" class="border mt-3"></div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.5/socket.io.min.js"></script>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const customerLat = {{ order.customer_latitude or 'null' }};
+            const customerLng = {{ order.customer_longitude or 'null' }};
+            const orderId = '{{ order.id }}';
+            const gpsStatusEl = document.getElementById('driver-gps-status');
+
+            if (!customerLat) {
+                document.getElementById('driver-map').innerHTML = "<div class='d-flex justify-content-center align-items-center h-100 text-muted'>Customer delivery coordinates not available. Navigate to street address.</div>";
+                return;
+            }
+
+            const map = L.map('driver-map').setView([customerLat, customerLng], 14);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '&copy; OpenStreetMap contributors'
+            }).addTo(map);
+
+            L.marker([customerLat, customerLng]).addTo(map)
+                .bindPopup('<b>Customer Destination</b><br>{{ order.customer_address }}')
+                .openPopup();
+                
+            let driverMarker = null;
+            var socket = io();
+
+            if (navigator.geolocation) {
+                navigator.geolocation.watchPosition((position) => {
+                    const lat = position.coords.latitude;
+                    const lng = position.coords.longitude;
+                    
+                    if (gpsStatusEl) {
+                        gpsStatusEl.innerText = `Current GPS location: ${lat.toFixed(5)}, ${lng.toFixed(5)} (Streaming live to customer)`;
+                    }
+
+                    socket.emit('driver_location_update', {
+                        order_id: orderId,
+                        lat: lat,
+                        lng: lng
+                    });
+
+                    if (!driverMarker) {
+                        driverMarker = L.marker([lat, lng]).addTo(map);
+                    } else {
+                        driverMarker.setLatLng([lat, lng]);
+                    }
+                    driverMarker.bindPopup('<b>Your Current Position</b>').openPopup();
+                }, (err) => {
+                    console.warn('Driver geolocation error:', err.message);
+                    if (gpsStatusEl) {
+                        gpsStatusEl.innerText = "Location tracking note: Permission not granted or GPS unavailable.";
+                    }
+                }, {
+                    enableHighAccuracy: true,
+                    maximumAge: 10000,
+                    timeout: 10000
+                });
+            }
+        });
+    </script>
+{% endblock %}

@@ -1,0 +1,214 @@
+{% extends "base.html" %}
+
+{% block title %}FarmFetch - Fresh Farm Produce Directly To Your Table{% endblock %}
+
+{% block content %}
+<!-- Premium Agricultural Hero Section -->
+<div class="hero-agricultural">
+    <div class="hero-tagline">
+        <i class="bi bi-patch-check-fill text-warning"></i>
+        <span>100% Hyperlocal & Sustainable</span>
+    </div>
+    <h1 class="hero-title">Fresh From Local Farms,<br>Delivered To Your Door</h1>
+    <p class="hero-description">
+        Connect directly with local organic growers and farmers in your area. Real-time ordering, transparent pricing, and live GPS delivery tracking.
+    </p>
+
+    <!-- Search & Filter Controls -->
+    <div class="search-filter-card">
+        <div class="search-input-group">
+            <i class="bi bi-search"></i>
+            <input type="text" id="farm-search" placeholder="Search farms by name, crop type (Organic, Dairy, Fruit)..." aria-label="Search farms">
+        </div>
+        <div class="d-flex align-items-center gap-2">
+            <button class="btn btn-secondary btn-sm" id="btn-refresh-location" title="Update my location">
+                <i class="bi bi-geo-alt-fill text-danger"></i> Refresh Location
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Farms Directory Section -->
+<div class="dashboard-card shadow-sm mb-5">
+    <div class="d-flex flex-wrap justify-content-between align-items-center mb-4 gap-2 border-bottom pb-3">
+        <div>
+            <h3 class="fw-bold mb-1 text-dark">
+                <i class="bi bi-shop text-success me-2"></i>Nearby Local Farmers
+            </h3>
+            <p class="text-muted small mb-0">Showing certified local growers sorted by distance from you.</p>
+        </div>
+        <div class="d-flex align-items-center gap-2">
+            <span class="badge bg-light text-secondary border px-3 py-2" id="farm-count-badge">
+                <i class="bi bi-compass me-1"></i> Detecting location...
+            </span>
+        </div>
+    </div>
+
+    <!-- Loading & Status Message -->
+    <div id="loading-container" class="text-center py-5">
+        <div class="spinner-border text-success mb-3" role="status" id="loading-spinner">
+            <span class="visually-hidden">Loading...</span>
+        </div>
+        <p id="loading-message" class="text-muted fw-semibold mb-2">Getting your location to find nearby farms...</p>
+        <button id="btn-fallback-location" class="btn btn-outline-primary btn-sm d-none mt-2">
+            <i class="bi bi-geo"></i> Browse All Nearby Farms
+        </button>
+    </div>
+
+    <!-- Farms Grid Container -->
+    <div id="farm-list" class="row g-4">
+        <!-- Farm cards injected dynamically via JavaScript -->
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+        const farmList = document.getElementById('farm-list');
+        const loadingMessage = document.getElementById('loading-message');
+        const loadingContainer = document.getElementById('loading-container');
+        const loadingSpinner = document.getElementById('loading-spinner');
+        const farmCountBadge = document.getElementById('farm-count-badge');
+        const searchInput = document.getElementById('farm-search');
+        const btnRefreshLocation = document.getElementById('btn-refresh-location');
+        const btnFallbackLocation = document.getElementById('btn-fallback-location');
+
+        let loadedFarms = [];
+
+        // 1. Initialize location detection
+        requestUserLocation();
+
+        btnRefreshLocation.addEventListener('click', () => {
+            requestUserLocation();
+        });
+
+        btnFallbackLocation.addEventListener('click', () => {
+            // Default coordinates (e.g. Bangalore center / demo center)
+            fetchNearbyFarms({ coords: { latitude: 12.9716, longitude: 77.5946 } });
+        });
+
+        // 2. Real-time Search Filter
+        searchInput.addEventListener('input', (e) => {
+            const query = e.target.value.toLowerCase().trim();
+            const filtered = loadedFarms.filter(f => 
+                (f.name && f.name.toLowerCase().includes(query)) ||
+                (f.farm_type && f.farm_type.toLowerCase().includes(query)) ||
+                (f.address && f.address.toLowerCase().includes(query))
+            );
+            renderFarms(filtered);
+        });
+
+        function requestUserLocation() {
+            loadingContainer.style.display = 'block';
+            loadingSpinner.style.display = 'inline-block';
+            loadingMessage.innerText = "Finding local farms within your radius...";
+            farmList.innerHTML = '';
+            btnFallbackLocation.classList.add('d-none');
+
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(
+                    fetchNearbyFarms, 
+                    handleLocationError,
+                    { timeout: 7000, enableHighAccuracy: false }
+                );
+            } else {
+                handleLocationError({ message: "Geolocation not supported by this browser." });
+            }
+        }
+
+        function fetchNearbyFarms(position) {
+            const lat = position.coords.latitude;
+            const lon = position.coords.longitude;
+
+            fetch(`/api/nearby-farms?lat=${lat}&lon=${lon}`)
+                .then(response => {
+                    if (!response.ok) throw new Error("Failed to load nearby farms");
+                    return response.json();
+                })
+                .then(farms => {
+                    loadingContainer.style.display = 'none';
+                    loadedFarms = farms;
+                    renderFarms(farms);
+                })
+                .catch(error => {
+                    console.error('Error fetching farms:', error);
+                    loadingSpinner.style.display = 'none';
+                    loadingMessage.innerText = 'Could not load farms. Please try again or use standard view.';
+                    btnFallbackLocation.classList.remove('d-none');
+                });
+        }
+
+        function renderFarms(farms) {
+            farmList.innerHTML = '';
+
+            if (farms.length === 0) {
+                farmCountBadge.innerHTML = `<i class="bi bi-info-circle me-1"></i> 0 farms found`;
+                farmList.innerHTML = `
+                    <div class="col-12 text-center py-5">
+                        <div class="empty-state-icon">
+                            <i class="bi bi-tree"></i>
+                        </div>
+                        <h4 class="empty-state-title">No farms match your search</h4>
+                        <p class="empty-state-desc">Try clearing your search query or check back soon as more local farmers join.</p>
+                    </div>
+                `;
+                return;
+            }
+
+            farmCountBadge.innerHTML = `<i class="bi bi-check2-circle text-success me-1"></i> ${farms.length} Farm${farms.length > 1 ? 's' : ''} Available`;
+
+            farms.forEach(farm => {
+                const cardHTML = `
+                    <div class="col-md-6 col-lg-4">
+                        <div class="farm-card">
+                            <div>
+                                <div class="farm-badge-header">
+                                    <div class="farm-avatar">
+                                        <i class="bi bi-tree-fill"></i>
+                                    </div>
+                                    <span class="distance-badge">
+                                        <i class="bi bi-geo-alt-fill text-danger"></i> ${farm.distance} km away
+                                    </span>
+                                </div>
+                                <h5 class="fw-bold text-dark mb-1">${escapeHtml(farm.name)}</h5>
+                                <div class="mb-2">
+                                    <span class="farm-type-pill">
+                                        <i class="bi bi-flower2 text-success me-1"></i>${escapeHtml(farm.farm_type || 'Fresh Produce')}
+                                    </span>
+                                </div>
+                                <p class="text-muted small mb-3">
+                                    <i class="bi bi-pin-map me-1 text-secondary"></i>${escapeHtml(farm.address || 'Local Region')}
+                                </p>
+                            </div>
+                            <div class="pt-2 border-top">
+                                <a href="/farm/${farm.id}" class="btn btn-primary w-100 btn-sm">
+                                    <span>View Fresh Produce</span>
+                                    <i class="bi bi-arrow-right"></i>
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                farmList.insertAdjacentHTML('beforeend', cardHTML);
+            });
+        }
+
+        function handleLocationError(error) {
+            console.warn('Geolocation warning:', error.message);
+            loadingSpinner.style.display = 'none';
+            loadingMessage.innerHTML = `Location access was not provided (${error.message || 'timed out'}).`;
+            btnFallbackLocation.classList.remove('d-none');
+            // Automatically fall back so user always sees the demo farms!
+            fetchNearbyFarms({ coords: { latitude: 12.9716, longitude: 77.5946 } });
+        }
+
+        function escapeHtml(string) {
+            if (!string) return '';
+            return String(string).replace(/[&<>"']/g, function (m) {
+                return {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[m];
+            });
+        }
+    });
+</script>
+{% endblock %}

@@ -1,0 +1,492 @@
+{% extends "base.html" %}
+{% block title %}Farmer Dashboard - {{ farm.name }}{% endblock %}
+
+{% block head_extra %}
+<style>
+.section-hdr { display:flex; justify-content:space-between; align-items:center; margin-bottom:1.25rem; }
+.section-hdr h5 { font-weight:700; margin-bottom:0; font-size:1.05rem; display:flex; align-items:center; gap:.5rem; }
+.pulse-live { width:9px; height:9px; border-radius:50%; background:#10b981; display:inline-block; animation:pulseActive 1.8s infinite; margin-right:.35rem; }
+.farm-hero { background:linear-gradient(135deg,var(--primary-forest),var(--primary-main) 55%,var(--primary-accent)); border-radius:var(--radius-xl); padding:1.75rem 2rem; color:#fff; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:1rem; box-shadow:var(--shadow-md); margin-bottom:1.75rem; }
+.farm-hero h3 { color:#fff; font-weight:800; margin-bottom:.25rem; }
+.farm-hero p { color:rgba(255,255,255,.85); margin-bottom:0; font-size:.93rem; }
+.action-card { background:linear-gradient(135deg,#d8f3dc,#f0fdf4); border:1px solid var(--accent-mint); border-radius:var(--radius-lg); padding:1rem 1.25rem; display:flex; align-items:center; justify-content:space-between; text-decoration:none; color:var(--text-heading); transition:all var(--transition-fast); }
+.action-card:hover { background:linear-gradient(135deg,#b7e4c7,#d8f3dc); transform:translateY(-2px); box-shadow:var(--shadow-sm); color:var(--text-heading); }
+.search-bar-sm { position:relative; }
+.search-bar-sm input { padding-left:2.25rem; }
+.search-bar-sm i { position:absolute; left:.75rem; top:50%; transform:translateY(-50%); color:var(--text-muted); }
+.low-stock-banner { background:linear-gradient(90deg,#fff7ed,#fffbf5); border:1px solid #fed7aa; border-radius:var(--radius-lg); padding:1rem 1.25rem; display:flex; align-items:flex-start; gap:.75rem; }
+.low-stock-item { background:#fff; border:1px solid #fed7aa; border-radius:var(--radius-md); padding:.5rem .85rem; display:flex; align-items:center; gap:.5rem; font-size:.85rem; }
+.skeleton { background:linear-gradient(90deg,#f0f0f0 25%,#e0e0e0 50%,#f0f0f0 75%); background-size:200% 100%; animation:skel-shimmer 1.4s infinite; border-radius:var(--radius-sm); }
+@keyframes skel-shimmer { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
+.chart-container { position:relative; height:200px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="farm-hero">
+  <div class="d-flex align-items-center gap-3">
+    <div class="farm-avatar" style="width:60px;height:60px;font-size:2rem;background:rgba(255,255,255,.2);color:#fff;">
+      <i class="bi bi-tree"></i>
+    </div>
+    <div>
+      <p class="mb-0" style="font-size:.82rem;opacity:.8;text-transform:uppercase;letter-spacing:.05em;">Farmer Dashboard</p>
+      <h3 class="mb-0">{{ farm.name }}</h3>
+      <p class="mb-0">
+        <i class="bi bi-geo-alt me-1"></i>{{ farm.address }}
+        <span class="badge ms-2 rounded-pill" style="background:rgba(255,255,255,.2);font-size:.78rem;">{{ farm.farm_type }}</span>
+      </p>
+    </div>
+  </div>
+  <div class="d-flex gap-2 flex-wrap">
+    <a href="{{ url_for('farm_orders') }}" class="btn btn-warning fw-bold">
+      <i class="bi bi-receipt"></i> Orders
+      {% if pending_orders > 0 %}<span class="badge bg-dark text-white rounded-pill ms-1">{{ pending_orders }}</span>{% endif %}
+    </a>
+    <a href="{{ url_for('manage_produce') }}" class="btn" style="background:rgba(255,255,255,.18);color:#fff;border:1px solid rgba(255,255,255,.3);">
+      <i class="bi bi-basket2"></i> Manage Produce
+    </a>
+  </div>
+</div>
+
+{% if low_stock_items %}
+<div class="low-stock-banner mb-4">
+  <i class="bi bi-exclamation-triangle-fill text-warning fs-5 flex-shrink-0 mt-1"></i>
+  <div class="flex-grow-1">
+    <div class="fw-bold text-dark mb-2">
+      <i class="bi bi-box-seam me-1"></i>Low Stock Warning — {{ low_stock_items|length }} item{{ 's' if low_stock_items|length != 1 else '' }} running low
+    </div>
+    <div class="d-flex gap-2 flex-wrap">
+      {% for item in low_stock_items %}
+      <div class="low-stock-item">
+        <i class="bi bi-flower1 text-warning"></i>
+        <span class="fw-semibold">{{ item.name }}</span>
+        <span class="badge bg-warning text-dark rounded-pill" style="font-size:.72rem;">{{ item.stock }} left</span>
+        <a href="{{ url_for('edit_produce_item', item_id=item.id) }}" class="text-primary text-decoration-none" style="font-size:.78rem;">Update</a>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<div class="row g-4">
+  <div class="col-lg-3">
+    <div class="dash-sidebar">
+      <div class="dashboard-card mb-3 p-3">
+        <div class="d-flex align-items-center gap-2 mb-2">
+          <div class="farm-avatar" style="width:40px;height:40px;font-size:1.2rem;"><i class="bi bi-tree"></i></div>
+          <div>
+            <div class="fw-bold text-dark" style="font-size:.9rem;">{{ farm.name }}</div>
+            <span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill" style="font-size:.72rem;">Verified Farm</span>
+          </div>
+        </div>
+        <div class="text-muted small"><i class="bi bi-geo-alt me-1 text-danger"></i>{{ farm.address }}</div>
+        {% if farm.latitude and farm.longitude %}
+        <div class="text-muted small mt-1"><i class="bi bi-map me-1"></i>{{ "%.4f"|format(farm.latitude) }}, {{ "%.4f"|format(farm.longitude) }}</div>
+        {% endif %}
+      </div>
+      <div class="dashboard-card p-2">
+        <nav class="nav flex-column nav-pills-dash">
+          <a class="nav-link active" href="#sect-overview"><i class="bi bi-grid-1x2"></i> Overview</a>
+          <a class="nav-link" href="#sect-orders">
+            <i class="bi bi-receipt" style="color:#d97706;"></i> Manage Orders
+            {% if pending_orders > 0 %}<span class="badge rounded-pill ms-auto" style="background:#fef3c7;color:#b45309;">{{ pending_orders }}</span>{% endif %}
+          </a>
+          <a class="nav-link" href="#sect-produce"><i class="bi bi-basket2 text-success"></i> Produce Inventory</a>
+          <a class="nav-link" href="#sect-chart"><i class="bi bi-bar-chart text-primary"></i> Sales Chart</a>
+          <a class="nav-link" href="#sect-farm-profile"><i class="bi bi-gear"></i> Farm Settings</a>
+          <hr class="my-2">
+          <a class="nav-link" href="{{ url_for('farm_produce', farm_id=farm.id) }}" target="_blank"><i class="bi bi-eye"></i> Customer View</a>
+          <a class="nav-link" href="{{ url_for('logout') }}" style="color:#dc2626;"><i class="bi bi-box-arrow-right"></i> Log Out</a>
+        </nav>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-9">
+
+    <div id="sect-overview" class="mb-4">
+      <div class="row g-3 mb-4">
+        <div class="col-sm-6 col-xl-3">
+          <div class="stat-card">
+            <div class="stat-icon green"><i class="bi bi-currency-dollar"></i></div>
+            <div><div class="stat-value">${{ "%.0f"|format(total_revenue) }}</div><div class="stat-label">Total Revenue</div></div>
+          </div>
+        </div>
+        <div class="col-sm-6 col-xl-3">
+          <div class="stat-card">
+            <div class="stat-icon amber"><i class="bi bi-clock-history"></i></div>
+            <div><div class="stat-value">{{ pending_orders }}</div><div class="stat-label">Pending Orders</div></div>
+          </div>
+        </div>
+        <div class="col-sm-6 col-xl-3">
+          <div class="stat-card">
+            <div class="stat-icon blue"><i class="bi bi-receipt"></i></div>
+            <div><div class="stat-value">{{ total_orders }}</div><div class="stat-label">Total Orders</div></div>
+          </div>
+        </div>
+        <div class="col-sm-6 col-xl-3">
+          <div class="stat-card">
+            <div class="stat-icon purple"><i class="bi bi-basket3"></i></div>
+            <div><div class="stat-value">{{ produce_count }}</div><div class="stat-label">Active Items</div></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="row g-3 mb-4">
+        <div class="col-sm-6">
+          <a href="{{ url_for('farm_orders') }}" class="action-card">
+            <div class="d-flex align-items-center gap-3">
+              <div class="farm-avatar" style="width:42px;height:42px;font-size:1.3rem;"><i class="bi bi-receipt"></i></div>
+              <div>
+                <div class="fw-bold">Manage Orders</div>
+                <div class="text-muted small">{{ pending_orders }} pending action{{ 's' if pending_orders != 1 else '' }}</div>
+              </div>
+            </div>
+            <i class="bi bi-chevron-right text-muted"></i>
+          </a>
+        </div>
+        <div class="col-sm-6">
+          <a href="{{ url_for('manage_produce') }}" class="action-card">
+            <div class="d-flex align-items-center gap-3">
+              <div class="farm-avatar" style="width:42px;height:42px;font-size:1.3rem;"><i class="bi bi-plus-circle"></i></div>
+              <div>
+                <div class="fw-bold">Add New Produce</div>
+                <div class="text-muted small">{{ produce_count }} item{{ 's' if produce_count != 1 else '' }} listed</div>
+              </div>
+            </div>
+            <i class="bi bi-chevron-right text-muted"></i>
+          </a>
+        </div>
+        <div class="col-sm-6">
+          <a href="{{ url_for('edit_farm_profile') }}" class="action-card">
+            <div class="d-flex align-items-center gap-3">
+              <div class="farm-avatar" style="width:42px;height:42px;font-size:1.3rem;background:#e0f2fe;color:#0369a1;"><i class="bi bi-sliders"></i></div>
+              <div>
+                <div class="fw-bold">Edit Farm Profile</div>
+                <div class="text-muted small">Location, name, type</div>
+              </div>
+            </div>
+            <i class="bi bi-chevron-right text-muted"></i>
+          </a>
+        </div>
+        <div class="col-sm-6">
+          <a href="{{ url_for('farm_produce', farm_id=farm.id) }}" target="_blank" class="action-card">
+            <div class="d-flex align-items-center gap-3">
+              <div class="farm-avatar" style="width:42px;height:42px;font-size:1.3rem;background:#f3e8ff;color:#7e22ce;"><i class="bi bi-eye"></i></div>
+              <div>
+                <div class="fw-bold">Preview Store</div>
+                <div class="text-muted small">See what customers see</div>
+              </div>
+            </div>
+            <i class="bi bi-box-arrow-up-right text-muted"></i>
+          </a>
+        </div>
+      </div>
+    </div>
+
+    <div id="sect-orders" class="dashboard-card mb-4">
+      <div class="section-hdr">
+        <h5><span class="pulse-live"></span> Recent Incoming Orders</h5>
+        <a href="{{ url_for('farm_orders') }}" class="btn btn-outline-primary btn-sm">View All <i class="bi bi-arrow-right ms-1"></i></a>
+      </div>
+
+      <div class="d-none alert alert-success d-flex justify-content-between align-items-center border-0 rounded-3 mb-3 py-2" id="realtime-banner-dash">
+        <div class="d-flex align-items-center gap-2">
+          <i class="bi bi-bell-fill text-success"></i>
+          <span id="realtime-text-dash"><strong>New order received!</strong></span>
+        </div>
+        <button class="btn btn-sm btn-success" onclick="window.location.reload()"><i class="bi bi-arrow-clockwise"></i> Refresh</button>
+      </div>
+
+      {% if recent_orders %}
+      <div class="table-responsive">
+        <table class="table table-custom align-middle mb-0">
+          <thead>
+            <tr><th>Order</th><th>Customer</th><th>Items</th><th>Total</th><th>Status</th><th class="text-end">Action</th></tr>
+          </thead>
+          <tbody>
+            {% for order in recent_orders %}
+            <tr>
+              <td>
+                <a href="{{ url_for('order_details', order_id=order.id) }}" class="fw-bold text-success">#{{ order.id }}</a>
+                <small class="text-muted d-block">{{ order.created_at.strftime('%b %d, %I:%M %p') if order.created_at and order.created_at.strftime else '' }}</small>
+              </td>
+              <td>
+                <div class="fw-semibold text-dark">{{ order.customer_name }}</div>
+                <small class="text-muted"><i class="bi bi-telephone me-1"></i>{{ order.customer_phone }}</small>
+              </td>
+              <td><span class="badge bg-light text-dark border">{{ order.items | length }} items</span></td>
+              <td><span class="fw-bold">${{ "%.2f"|format(order.total_price) }}</span></td>
+              <td><span class="status-pill status-{{ order.status | replace(' ', '-') }}">{{ order.status }}</span></td>
+              <td class="text-end">
+                <div class="d-inline-flex gap-1">
+                  {% if order.status == 'Placed' %}
+                  <form action="{{ url_for('update_order_status', order_id=order.id) }}" method="POST" class="d-inline">
+                    <input type="hidden" name="status" value="Preparing">
+                    <button class="btn btn-success btn-sm"><i class="bi bi-check2"></i> Accept</button>
+                  </form>
+                  {% elif order.status == 'Preparing' %}
+                  <form action="{{ url_for('update_order_status', order_id=order.id) }}" method="POST" class="d-inline">
+                    <input type="hidden" name="status" value="Ready for Pickup">
+                    <button class="btn btn-primary btn-sm"><i class="bi bi-box-seam"></i> Ready</button>
+                  </form>
+                  {% endif %}
+                  <a href="{{ url_for('order_details', order_id=order.id) }}" class="btn btn-outline-primary btn-sm"><i class="bi bi-eye"></i></a>
+                </div>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <div class="text-center py-5">
+        <div class="empty-state-icon"><i class="bi bi-inbox"></i></div>
+        <h5 class="empty-state-title">No orders yet</h5>
+        <p class="empty-state-desc">New customer orders will appear here in real-time via WebSocket notifications.</p>
+        <a href="{{ url_for('manage_produce') }}" class="btn btn-primary px-4"><i class="bi bi-plus-circle me-1"></i> Add Fresh Produce</a>
+      </div>
+      {% endif %}
+    </div>
+
+    <div id="sect-produce" class="dashboard-card mb-4">
+      <div class="section-hdr">
+        <h5><i class="bi bi-basket2 text-success"></i> Produce Inventory</h5>
+        <div class="d-flex gap-2">
+          <a href="{{ url_for('manage_produce') }}" class="btn btn-primary btn-sm"><i class="bi bi-plus-lg"></i> Add Item</a>
+          <a href="{{ url_for('manage_produce') }}" class="btn btn-outline-primary btn-sm">Manage All</a>
+        </div>
+      </div>
+      {% if produce_items is defined and produce_items %}
+      <div class="search-bar-sm mb-3">
+        <i class="bi bi-search"></i>
+        <input type="text" id="produce-search-input" class="form-control form-control-sm" placeholder="Search produce items...">
+      </div>
+      <div class="table-responsive">
+        <table class="table table-custom align-middle mb-0" id="produce-table">
+          <thead>
+            <tr><th>Item</th><th>Description</th><th>Price</th><th>Unit</th><th>Category</th><th>Stock</th><th class="text-end">Actions</th></tr>
+          </thead>
+          <tbody>
+            {% for item in produce_items %}
+            <tr class="produce-row" data-name="{{ item.name | lower }}">
+              <td>
+                <div class="d-flex align-items-center gap-2">
+                  {% if item.image_url %}
+                  <img src="{{ item.image_url }}" alt="{{ item.name }}" class="rounded-3 border" style="width:34px;height:34px;object-fit:cover;" onerror="this.style.display='none';this.nextElementSibling.style.display='flex';">
+                  <div class="farm-avatar" style="width:34px;height:34px;font-size:1rem;display:none;"><i class="bi bi-flower1"></i></div>
+                  {% else %}
+                  <div class="farm-avatar" style="width:34px;height:34px;font-size:1rem;"><i class="bi bi-flower1"></i></div>
+                  {% endif %}
+                  <span class="fw-semibold text-dark">{{ item.name }}</span>
+                </div>
+              </td>
+              <td><span class="text-muted small">{{ item.description if item.description else '—' }}</span></td>
+              <td><span class="fw-bold text-success">${{ "%.2f"|format(item.price) }}</span></td>
+              <td><span class="badge bg-light text-dark border">{{ item.unit }}</span></td>
+              <td><span class="badge bg-secondary-subtle text-secondary border" style="font-size:.75rem;">{{ item.category or 'Other' }}</span></td>
+              <td>
+                {% if item.stock is not none and item.stock is not none %}
+                  {% if item.stock == 0 %}
+                  <span class="badge bg-danger-subtle text-danger border" style="font-size:.75rem;">Out of Stock</span>
+                  {% elif item.stock <= 5 %}
+                  <span class="badge" style="background:#fef3c7;color:#92400e;font-size:.75rem;">Low: {{ item.stock }}</span>
+                  {% else %}
+                  <span class="badge bg-success-subtle text-success border" style="font-size:.75rem;">{{ item.stock }}</span>
+                  {% endif %}
+                {% else %}
+                <span class="text-muted small">—</span>
+                {% endif %}
+              </td>
+              <td class="text-end">
+                <div class="d-inline-flex gap-1">
+                  <a href="{{ url_for('edit_produce_item', item_id=item.id) }}" class="btn btn-outline-primary btn-sm"><i class="bi bi-pencil"></i></a>
+                  <form action="{{ url_for('delete_produce_item', item_id=item.id) }}" method="POST" class="d-inline" onsubmit="return confirm('Delete this item?');">
+                    <button type="submit" class="btn btn-outline-danger btn-sm"><i class="bi bi-trash3"></i></button>
+                  </form>
+                </div>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <div class="text-center py-4">
+        <div class="empty-state-icon" style="width:56px;height:56px;font-size:1.5rem;"><i class="bi bi-basket3"></i></div>
+        <p class="text-muted mb-3">No produce items listed yet.</p>
+        <a href="{{ url_for('manage_produce') }}" class="btn btn-primary btn-sm"><i class="bi bi-plus-circle me-1"></i> Add First Item</a>
+      </div>
+      {% endif %}
+    </div>
+
+    <div id="sect-chart" class="dashboard-card mb-4">
+      <div class="section-hdr">
+        <h5><i class="bi bi-bar-chart text-primary"></i> 7-Day Revenue Chart</h5>
+        <span class="badge bg-primary-subtle text-primary border" style="font-size:.78rem;">Last 7 days</span>
+      </div>
+      <div class="chart-container" id="chart-wrap">
+        <div class="text-center py-4" id="chart-loading">
+          <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
+          <p class="text-muted small mt-2">Loading sales data...</p>
+        </div>
+        <canvas id="salesChart" class="d-none"></canvas>
+      </div>
+      <p class="text-muted small mt-2 mb-0" id="chart-note" style="display:none;">
+        <i class="bi bi-info-circle me-1"></i>Revenue from non-rejected orders only.
+      </p>
+    </div>
+
+    <div id="sect-farm-profile" class="dashboard-card mb-4">
+      <div class="section-hdr">
+        <h5><i class="bi bi-gear text-dark"></i> Farm Settings</h5>
+        <a href="{{ url_for('edit_farm_profile') }}" class="btn btn-outline-primary btn-sm"><i class="bi bi-pencil-square me-1"></i> Edit Profile</a>
+      </div>
+      <div class="row g-3">
+        <div class="col-sm-6">
+          <div class="p-3 rounded-3 border" style="background:var(--surface-alt);">
+            <div class="text-muted small fw-semibold mb-1">Farm Name</div>
+            <div class="fw-bold text-dark">{{ farm.name }}</div>
+          </div>
+        </div>
+        <div class="col-sm-6">
+          <div class="p-3 rounded-3 border" style="background:var(--surface-alt);">
+            <div class="text-muted small fw-semibold mb-1">Farm Type</div>
+            <div class="fw-bold text-dark">{{ farm.farm_type }}</div>
+          </div>
+        </div>
+        <div class="col-sm-6">
+          <div class="p-3 rounded-3 border" style="background:var(--surface-alt);">
+            <div class="text-muted small fw-semibold mb-1">Address</div>
+            <div class="fw-bold text-dark">{{ farm.address or '—' }}</div>
+          </div>
+        </div>
+        <div class="col-sm-6">
+          <div class="p-3 rounded-3 border" style="background:var(--surface-alt);">
+            <div class="text-muted small fw-semibold mb-1">GPS Coordinates</div>
+            {% if farm.latitude and farm.longitude %}
+            <div class="fw-bold text-dark">{{ "%.5f"|format(farm.latitude) }}, {{ "%.5f"|format(farm.longitude) }}</div>
+            {% else %}
+            <div class="text-muted small">Not set — <a href="{{ url_for('edit_farm_profile') }}">Add coordinates</a></div>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="dashboard-card bg-success-subtle border-success-subtle mb-4">
+      <div class="d-flex align-items-center gap-2 mb-2 text-success">
+        <i class="bi bi-broadcast fs-5"></i>
+        <h6 class="fw-bold mb-0">Live Order Notifications Active</h6>
+        <span class="badge bg-success text-white rounded-pill ms-auto" style="font-size:.72rem;">WebSocket ON</span>
+      </div>
+      <p class="small text-muted mb-0">New customer orders are delivered instantly to your screen via real-time WebSockets without needing to reload the browser.</p>
+    </div>
+
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.5/socket.io.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+(function() {
+  'use strict';
+
+  function init() {
+    // Sidebar smooth scroll
+    document.querySelectorAll('.nav-pills-dash .nav-link[href^="#"]').forEach(function(link) {
+      link.addEventListener('click', function(e) {
+        e.preventDefault();
+        var el = document.getElementById(link.getAttribute('href').slice(1));
+        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
+    });
+
+    // Produce search filter
+    var searchInput = document.getElementById('produce-search-input');
+    if (searchInput) {
+      searchInput.addEventListener('input', function() {
+        var q = searchInput.value.toLowerCase();
+        document.querySelectorAll('.produce-row').forEach(function(row) {
+          row.style.display = row.dataset.name.indexOf(q) >= 0 ? '' : 'none';
+        });
+      });
+    }
+
+    // Sales Chart
+    fetch('/api/farmer/sales-chart')
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        var loading = document.getElementById('chart-loading');
+        var canvas = document.getElementById('salesChart');
+        var note = document.getElementById('chart-note');
+        if (loading) loading.style.display = 'none';
+        if (canvas) {
+          canvas.classList.remove('d-none');
+          if (note) note.style.display = '';
+          var hasData = data.data && data.data.some(function(v) { return v > 0; });
+          if (!hasData) {
+            var wrap = document.getElementById('chart-wrap');
+            if (wrap) wrap.innerHTML = '<div class="text-center py-4 text-muted"><i class="bi bi-bar-chart fs-2 d-block mb-2"></i><p class="small">No revenue data for the last 7 days yet.<br>Start receiving orders to see your sales chart.</p></div>';
+            return;
+          }
+          new Chart(canvas, {
+            type: 'bar',
+            data: {
+              labels: data.labels,
+              datasets: [{
+                label: 'Revenue ($)',
+                data: data.data,
+                backgroundColor: 'rgba(45, 106, 79, 0.18)',
+                borderColor: 'rgba(45, 106, 79, 0.85)',
+                borderWidth: 2,
+                borderRadius: 6,
+                borderSkipped: false
+              }]
+            },
+            options: {
+              responsive: true,
+              maintainAspectRatio: false,
+              plugins: { legend: { display: false } },
+              scales: {
+                y: {
+                  beginAtZero: true,
+                  ticks: { callback: function(v) { return '$' + v; }, font: { size: 11 } },
+                  grid: { color: 'rgba(0,0,0,.04)' }
+                },
+                x: { ticks: { font: { size: 11 } }, grid: { display: false } }
+              }
+            }
+          });
+        }
+      })
+      .catch(function() {
+        var wrap = document.getElementById('chart-wrap');
+        if (wrap) wrap.innerHTML = '<div class="text-center py-3 text-muted small"><i class="bi bi-exclamation-circle me-1"></i>Could not load sales data.</div>';
+      });
+
+    // Socket.IO for real-time new orders
+    var socket = io();
+    socket.on('connect', function() {
+      socket.emit('join_farm_room', { farm_id: '{{ farm.id }}' });
+    });
+    socket.on('new_order', function(data) {
+      var banner = document.getElementById('realtime-banner-dash');
+      var text = document.getElementById('realtime-text-dash');
+      if (banner && text) {
+        text.innerHTML = '<strong>New Order #' + data.order_id + ' from ' + data.customer_name + ' ($' + Number(data.total).toFixed(2) + ')!</strong>';
+        banner.classList.remove('d-none');
+        banner.classList.add('d-flex');
+      }
+    });
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else { init(); }
+})();
+</script>
+{% endblock %}

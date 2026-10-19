@@ -1,0 +1,375 @@
+{% extends "base.html" %}
+{% block title %}Driver Dashboard - FarmFetch Delivery{% endblock %}
+
+{% block head_extra %}
+<style>
+.section-hdr { display:flex; justify-content:space-between; align-items:center; margin-bottom:1.25rem; }
+.section-hdr h5 { font-weight:700; margin-bottom:0; font-size:1.05rem; display:flex; align-items:center; gap:.5rem; }
+.driver-hero { background:linear-gradient(135deg,#1e3a5f,#1d4ed8 60%,#3b82f6); border-radius:var(--radius-xl); padding:1.75rem 2rem; color:#fff; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:1rem; box-shadow:var(--shadow-md); margin-bottom:1.75rem; }
+.driver-hero h3 { color:#fff; font-weight:800; margin-bottom:.25rem; }
+.driver-hero p { color:rgba(255,255,255,.85); margin-bottom:0; font-size:.93rem; }
+.status-indicator { display:inline-flex; align-items:center; gap:.5rem; padding:.4rem 1rem; border-radius:var(--radius-pill); font-weight:700; font-size:.85rem; }
+.status-available { background:#d1fae5; color:#065f46; border:1px solid #6ee7b7; }
+.status-busy { background:#fef3c7; color:#b45309; border:1px solid #fcd34d; }
+.pulse-green { width:8px; height:8px; border-radius:50%; background:#10b981; display:inline-block; animation:pulseActive 1.8s infinite; }
+.delivery-card { border:1px solid var(--border-light); border-radius:var(--radius-lg); padding:1.25rem; background:#fff; transition:all var(--transition-fast); position:relative; overflow:hidden; }
+.delivery-card::before { content:''; position:absolute; left:0; top:0; bottom:0; width:4px; border-radius:4px 0 0 4px; }
+.delivery-card.in-progress::before { background:#9333ea; }
+.delivery-card.available::before { background:#16a34a; }
+.delivery-card:hover { box-shadow:var(--shadow-md); transform:translateY(-2px); }
+.route-info { background:var(--surface-alt); border-radius:var(--radius-md); padding:.75rem 1rem; border:1px solid var(--border-light); }
+.warning-box { background:#fff7ed; border:1px solid #fed7aa; border-radius:var(--radius-lg); padding:1rem 1.25rem; display:flex; align-items:flex-start; gap:.75rem; }
+.gps-status-bar { background:linear-gradient(90deg,#d1fae5,#f0fdf4); border:1px solid #6ee7b7; border-radius:var(--radius-lg); padding:.75rem 1.25rem; display:flex; align-items:center; justify-content:space-between; gap:1rem; flex-wrap:wrap; }
+.history-row { border:1px solid var(--border-light); border-radius:var(--radius-md); padding:.85rem 1rem; background:#fff; display:flex; align-items:center; gap:1rem; transition:box-shadow var(--transition-fast); }
+.history-row:hover { box-shadow:var(--shadow-xs); }
+</style>
+{% endblock %}
+
+{% block content %}
+{% set in_progress_orders = orders | selectattr('driver_id', '==', current_user.id) | selectattr('status', '==', 'Picked Up') | list %}
+{% set available_orders = orders | selectattr('status', '==', 'Ready for Pickup') | list %}
+
+<div class="driver-hero">
+  <div class="d-flex align-items-center gap-3">
+    <div class="farm-avatar" style="width:60px;height:60px;font-size:2rem;background:rgba(255,255,255,.2);color:#fff;">
+      <i class="bi bi-truck"></i>
+    </div>
+    <div>
+      <p class="mb-0" style="font-size:.82rem;opacity:.8;text-transform:uppercase;letter-spacing:.05em;">Driver Dashboard</p>
+      <h3 class="mb-0">{{ current_user.email.split('@')[0] | title }}</h3>
+      <p>Delivering fresh farm produce to local customers.</p>
+    </div>
+  </div>
+  <div class="d-flex flex-column align-items-end gap-2">
+    {% if in_progress_orders %}
+    <div class="status-indicator status-busy">
+      <span class="pulse-green" style="background:#f59e0b;"></span> On Delivery ({{ in_progress_orders|length }} active)
+    </div>
+    {% else %}
+    <div class="status-indicator status-available">
+      <span class="pulse-green"></span> Available for Pickup
+    </div>
+    {% endif %}
+    <div class="text-white small opacity-75"><i class="bi bi-envelope me-1"></i>{{ current_user.email }}</div>
+  </div>
+</div>
+
+<div class="row g-4">
+  <div class="col-lg-3">
+    <div class="dash-sidebar">
+      <div class="dashboard-card mb-3 p-3">
+        <div class="d-flex align-items-center gap-2 mb-2">
+          <div class="farm-avatar" style="width:42px;height:42px;font-size:1.25rem;background:#dbeafe;color:#1d4ed8;"><i class="bi bi-truck"></i></div>
+          <div>
+            <div class="fw-bold text-dark" style="font-size:.9rem;">{{ current_user.email.split('@')[0] | title }}</div>
+            <span class="badge rounded-pill" style="background:#dbeafe;color:#1d4ed8;font-size:.72rem;">Delivery Driver</span>
+          </div>
+        </div>
+        <div class="mt-2">
+          <div class="d-flex justify-content-between text-muted small mb-1">
+            <span>Active Deliveries</span>
+            <strong class="text-dark">{{ in_progress_orders|length }}</strong>
+          </div>
+          <div class="d-flex justify-content-between text-muted small mb-1">
+            <span>Available Orders</span>
+            <strong class="text-success">{{ available_orders|length }}</strong>
+          </div>
+          <div class="d-flex justify-content-between text-muted small">
+            <span>Delivered Today</span>
+            <strong class="text-primary" id="sidebar-delivered">—</strong>
+          </div>
+        </div>
+      </div>
+      <div class="dashboard-card p-2">
+        <nav class="nav flex-column nav-pills-dash">
+          <a class="nav-link active" href="#sect-stats"><i class="bi bi-grid-1x2"></i> Overview</a>
+          <a class="nav-link" href="#sect-active">
+            <i class="bi bi-truck" style="color:#9333ea;"></i> Active Deliveries
+            {% if in_progress_orders %}<span class="badge rounded-pill ms-auto" style="background:#f3e8ff;color:#7e22ce;">{{ in_progress_orders|length }}</span>{% endif %}
+          </a>
+          <a class="nav-link" href="#sect-available">
+            <i class="bi bi-box-seam-fill text-success"></i> Available Orders
+            {% if available_orders %}<span class="badge bg-success text-white rounded-pill ms-auto">{{ available_orders|length }}</span>{% endif %}
+          </a>
+          <a class="nav-link" href="#sect-history"><i class="bi bi-clock-history"></i> Delivery History</a>
+          <a class="nav-link" href="#sect-location"><i class="bi bi-geo-alt"></i> GPS Status</a>
+          <hr class="my-2">
+          <a class="nav-link" href="{{ url_for('logout') }}" style="color:#dc2626;"><i class="bi bi-box-arrow-right"></i> Log Out</a>
+        </nav>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-9">
+
+    <div id="sect-stats" class="row g-3 mb-4">
+      <div class="col-sm-6 col-md-3">
+        <div class="stat-card">
+          <div class="stat-icon purple"><i class="bi bi-truck"></i></div>
+          <div><div class="stat-value">{{ in_progress_orders|length }}</div><div class="stat-label">In Progress</div></div>
+        </div>
+      </div>
+      <div class="col-sm-6 col-md-3">
+        <div class="stat-card">
+          <div class="stat-icon green"><i class="bi bi-box-seam"></i></div>
+          <div><div class="stat-value">{{ available_orders|length }}</div><div class="stat-label">Available</div></div>
+        </div>
+      </div>
+      <div class="col-sm-6 col-md-3">
+        <div class="stat-card" id="stat-delivered-card">
+          <div class="stat-icon blue"><i class="bi bi-check2-all"></i></div>
+          <div><div class="stat-value" id="stat-total-delivered">—</div><div class="stat-label">Delivered</div></div>
+        </div>
+      </div>
+      <div class="col-sm-6 col-md-3">
+        <div class="stat-card" id="stat-earnings-card">
+          <div class="stat-icon amber"><i class="bi bi-cash-stack"></i></div>
+          <div><div class="stat-value" id="stat-earnings">—</div><div class="stat-label">Est. Earnings</div></div>
+        </div>
+      </div>
+    </div>
+
+    <div id="sect-active" class="dashboard-card mb-4">
+      <div class="section-hdr">
+        <h5><i class="bi bi-truck" style="color:#9333ea;"></i> Active Deliveries In Progress</h5>
+        <span class="badge rounded-pill" style="background:#f3e8ff;color:#7e22ce;">{{ in_progress_orders|length }} Active</span>
+      </div>
+      {% if in_progress_orders %}
+      <div class="d-flex flex-column gap-3">
+        {% for order in in_progress_orders %}
+        <div class="delivery-card in-progress">
+          <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-3">
+            <div>
+              <div class="fw-bold text-dark fs-6">Order #{{ order.id }}</div>
+              <span class="status-pill status-Picked-Up"><i class="bi bi-truck"></i> En Route</span>
+            </div>
+            <a href="{{ url_for('driver_delivery', order_id=order.id) }}" class="btn btn-primary btn-sm">
+              <i class="bi bi-cursor-fill me-1"></i> Continue Navigation
+            </a>
+          </div>
+          <div class="row g-2">
+            <div class="col-md-6">
+              <div class="route-info">
+                <div class="text-muted small fw-semibold mb-1"><i class="bi bi-geo-alt text-success me-1"></i>Pickup From</div>
+                <div class="fw-bold text-dark">{{ order.farm.name if order.farm else 'Farm' }}</div>
+                <div class="text-muted small">{{ order.farm.address if order.farm else '—' }}</div>
+              </div>
+            </div>
+            <div class="col-md-6">
+              <div class="route-info">
+                <div class="text-muted small fw-semibold mb-1"><i class="bi bi-pin-map text-danger me-1"></i>Deliver To</div>
+                <div class="fw-bold text-dark">{{ order.customer_name }}</div>
+                <div class="text-muted small">{{ order.customer_address }}</div>
+              </div>
+            </div>
+          </div>
+          <div class="d-flex justify-content-between align-items-center mt-3">
+            <div class="text-muted small">
+              <i class="bi bi-telephone me-1"></i>
+              <a href="tel:{{ order.customer_phone }}" class="text-decoration-none">{{ order.customer_phone }}</a>
+            </div>
+            <span class="fw-bold text-success">${{ "%.2f"|format(order.total_price) }}</span>
+          </div>
+          <div class="mt-3 pt-2 border-top">
+            <form action="{{ url_for('driver_complete_delivery', order_id=order.id) }}" method="POST" onsubmit="return confirm('Confirm delivery handed over to customer?');">
+              <button type="submit" class="btn btn-success w-100">
+                <i class="bi bi-check2-circle me-1"></i> Confirm Delivery Completed
+              </button>
+            </form>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <div class="text-center py-4">
+        <div class="empty-state-icon" style="width:60px;height:60px;font-size:1.6rem;"><i class="bi bi-truck"></i></div>
+        <p class="text-muted mb-0">No active deliveries. Accept an available order below to start delivering!</p>
+      </div>
+      {% endif %}
+    </div>
+
+    <div id="sect-available" class="dashboard-card mb-4">
+      <div class="section-hdr">
+        <h5><i class="bi bi-box-seam-fill text-success"></i> Available Orders Ready for Pickup</h5>
+        <span class="badge bg-success text-white rounded-pill">{{ available_orders|length }} Ready</span>
+      </div>
+      {% if available_orders %}
+      <div class="d-flex flex-column gap-3">
+        {% for order in available_orders %}
+        <div class="delivery-card available">
+          <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-3">
+            <div>
+              <div class="fw-bold text-dark fs-6">Order #{{ order.id }}</div>
+              <span class="status-pill status-Ready-for-Pickup"><i class="bi bi-box-seam"></i> Ready for Pickup</span>
+              {% if order.created_at and order.created_at.strftime %}
+              <div class="text-muted" style="font-size:.77rem;margin-top:.25rem;"><i class="bi bi-clock me-1"></i>{{ order.created_at.strftime('%b %d, %I:%M %p') }}</div>
+              {% endif %}
+            </div>
+            <span class="fw-bold text-success fs-5">${{ "%.2f"|format(order.total_price) }}</span>
+          </div>
+          <div class="row g-2 mb-3">
+            <div class="col-md-6">
+              <div class="route-info">
+                <div class="text-muted small fw-semibold mb-1"><i class="bi bi-geo-alt text-success me-1"></i>Pickup From</div>
+                <div class="fw-bold text-dark">{{ order.farm.name if order.farm else 'Farm' }}</div>
+                <div class="text-muted small">{{ order.farm.address if order.farm else '—' }}</div>
+              </div>
+            </div>
+            <div class="col-md-6">
+              <div class="route-info">
+                <div class="text-muted small fw-semibold mb-1"><i class="bi bi-pin-map text-danger me-1"></i>Deliver To</div>
+                <div class="fw-bold text-dark">{{ order.customer_name }}</div>
+                <div class="text-muted small">{{ order.customer_address }}</div>
+              </div>
+            </div>
+          </div>
+          <div class="d-flex justify-content-between align-items-center">
+            <div class="text-muted small">{{ order.items|length }} item{{ 's' if order.items|length != 1 else '' }} in this order</div>
+            <form action="{{ url_for('driver_accept_order', order_id=order.id) }}" method="POST">
+              <button type="submit" class="btn btn-success">
+                <i class="bi bi-check2-circle me-1"></i> Accept Delivery
+              </button>
+            </form>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <div class="text-center py-5">
+        <div class="empty-state-icon"><i class="bi bi-hourglass-split"></i></div>
+        <h5 class="empty-state-title">No orders ready for pickup yet</h5>
+        <p class="empty-state-desc">Farmers are preparing harvests. Check back shortly!</p>
+      </div>
+      {% endif %}
+    </div>
+
+    <div id="sect-history" class="dashboard-card mb-4">
+      <div class="section-hdr">
+        <h5><i class="bi bi-clock-history"></i> Delivery History</h5>
+        <span class="badge bg-light text-dark border" id="history-count">Loading...</span>
+      </div>
+      <div id="history-list">
+        <div class="text-center py-4">
+          <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
+          <p class="text-muted small mt-2">Loading delivery history...</p>
+        </div>
+      </div>
+    </div>
+
+    <div id="sect-location" class="mb-4">
+      <div class="section-hdr">
+        <h5><i class="bi bi-geo-alt text-danger"></i> GPS & Location Status</h5>
+      </div>
+      <div class="gps-status-bar mb-3">
+        <div class="d-flex align-items-center gap-2">
+          <span class="pulse-green"></span>
+          <span class="fw-semibold text-success">Live Location Sharing Ready</span>
+        </div>
+        <div class="text-muted small" id="gps-info-text">Browser GPS will activate when you accept a delivery.</div>
+      </div>
+
+      <div class="warning-box mb-3">
+        <i class="bi bi-exclamation-triangle-fill text-warning fs-5 flex-shrink-0 mt-1"></i>
+        <div>
+          <div class="fw-bold text-dark mb-1">Location Permission Required</div>
+          <div class="text-muted small">To share your live GPS position with customers, you must grant location access in your browser. If you denied it, go to your browser site settings to re-enable.</div>
+        </div>
+      </div>
+      <div class="warning-box" style="background:#f0f9ff;border-color:#bae6fd;">
+        <i class="bi bi-info-circle-fill text-primary fs-5 flex-shrink-0 mt-1"></i>
+        <div>
+          <div class="fw-bold text-dark mb-1">How Live Tracking Works</div>
+          <div class="text-muted small">Once you accept an order and open the Delivery Navigation page, your GPS coordinates are broadcast via WebSocket to the customer's map in real-time. No app download required — just browser GPS.</div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function() {
+  'use strict';
+
+  function init() {
+    // Smooth scroll
+    document.querySelectorAll('.nav-pills-dash .nav-link[href^="#"]').forEach(function(link) {
+      link.addEventListener('click', function(e) {
+        e.preventDefault();
+        var el = document.getElementById(link.getAttribute('href').slice(1));
+        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
+    });
+
+    // Load driver stats
+    fetch('/api/driver/stats')
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        var dlEl = document.getElementById('stat-total-delivered');
+        var earnEl = document.getElementById('stat-earnings');
+        var sideEl = document.getElementById('sidebar-delivered');
+        if (dlEl) dlEl.textContent = data.total_delivered;
+        if (earnEl) earnEl.textContent = '$' + Number(data.total_earnings).toFixed(0);
+        if (sideEl) sideEl.textContent = data.total_delivered;
+
+        // Render delivery history (from stat data)
+        renderHistory(data.total_delivered, data.total_earnings);
+      })
+      .catch(function() {
+        var dlEl = document.getElementById('stat-total-delivered');
+        var earnEl = document.getElementById('stat-earnings');
+        if (dlEl) dlEl.textContent = '0';
+        if (earnEl) earnEl.textContent = '$0';
+        renderHistory(0, 0);
+      });
+
+    // GPS check
+    var gpsInfo = document.getElementById('gps-info-text');
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        function(pos) {
+          if (gpsInfo) gpsInfo.textContent = 'GPS Ready: ' + pos.coords.latitude.toFixed(4) + ', ' + pos.coords.longitude.toFixed(4);
+        },
+        function(err) {
+          if (gpsInfo) { gpsInfo.textContent = 'GPS denied: ' + err.message + '. Please enable location access.'; gpsInfo.style.color = '#dc2626'; }
+        }
+      );
+    } else {
+      if (gpsInfo) { gpsInfo.textContent = 'Geolocation not supported by this browser.'; gpsInfo.style.color = '#dc2626'; }
+    }
+  }
+
+  function renderHistory(totalDelivered, totalEarnings) {
+    var historyList = document.getElementById('history-list');
+    var historyCount = document.getElementById('history-count');
+    if (!historyList) return;
+
+    if (historyCount) historyCount.textContent = totalDelivered + ' completed';
+
+    if (!totalDelivered || totalDelivered === 0) {
+      historyList.innerHTML = '<div class="text-center py-5"><div class="empty-state-icon"><i class="bi bi-truck"></i></div><h5 class="empty-state-title">No completed deliveries yet</h5><p class="empty-state-desc">Accept an available order to start your delivery history. Your earnings will appear here once you complete deliveries.</p></div>';
+      return;
+    }
+
+    var earningsHtml = totalEarnings > 0
+      ? '<div class="d-flex justify-content-between p-3 rounded-3 mb-3" style="background:linear-gradient(90deg,#d1fae5,#f0fdf4);border:1px solid #6ee7b7;">' +
+        '<div><div class="fw-bold text-dark">Total Completed Deliveries</div><div class="text-muted small">All time</div></div>' +
+        '<div class="text-end"><div class="fw-bold text-success fs-5">' + totalDelivered + '</div><div class="text-muted small">deliveries</div></div>' +
+        '</div>' +
+        '<div class="d-flex justify-content-between p-3 rounded-3" style="background:linear-gradient(90deg,#fef3c7,#fffbeb);border:1px solid #fcd34d;">' +
+        '<div><div class="fw-bold text-dark">Estimated Earnings</div><div class="text-muted small">10% of order value</div></div>' +
+        '<div class="text-end"><div class="fw-bold text-warning fs-5">$' + Number(totalEarnings).toFixed(2) + '</div><div class="text-muted small">earned</div></div>' +
+        '</div>'
+      : '<div class="text-center py-3 text-muted small">Earnings will be calculated as 10% of each completed order value.</div>';
+
+    historyList.innerHTML = earningsHtml;
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else { init(); }
+})();
+</script>
+{% endblock %}

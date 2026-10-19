@@ -1,0 +1,141 @@
+{% extends "base.html" %}
+
+{% block title %}Shopping Cart - FarmFetch{% endblock %}
+
+{% block content %}
+<div class="row g-4">
+    <div class="col-12">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+            <div>
+                <h2 class="fw-bold mb-1"><i class="bi bi-cart3 text-success me-2"></i>Shopping Cart</h2>
+                <p class="text-muted small mb-0">Review your selected produce before proceeding to checkout.</p>
+            </div>
+            <a href="{{ url_for('home') }}" class="btn btn-outline-primary btn-sm">
+                <i class="bi bi-arrow-left"></i> Continue Shopping
+            </a>
+        </div>
+    </div>
+
+    {% if cart_items %}
+    <!-- Cart Items Table -->
+    <div class="col-lg-8">
+        <div class="dashboard-card shadow-sm p-0 overflow-hidden">
+            <div class="table-responsive">
+                <table class="table table-custom align-middle mb-0">
+                    <thead>
+                        <tr>
+                            <th>Produce Item</th>
+                            <th>Unit Price</th>
+                            <th style="width: 170px;">Quantity</th>
+                            <th>Subtotal</th>
+                            <th class="text-end">Remove</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for data in cart_items %}
+                        <tr>
+                            <td>
+                                <div class="d-flex align-items-center gap-2">
+                                    {% if data.item.image_url %}
+                                    <img src="{{ data.item.image_url }}" alt="{{ data.item.name }}" class="rounded-3 border" style="width: 38px; height: 38px; object-fit: cover;" onerror="this.style.display='none';this.nextElementSibling.style.display='flex';">
+                                    <div class="farm-avatar" style="width: 36px; height: 36px; font-size: 1.1rem; display: none;">
+                                        <i class="bi bi-flower1"></i>
+                                    </div>
+                                    {% else %}
+                                    <div class="farm-avatar" style="width: 36px; height: 36px; font-size: 1.1rem;">
+                                        <i class="bi bi-flower1"></i>
+                                    </div>
+                                    {% endif %}
+                                    <div>
+                                        <div class="fw-bold text-dark">{{ data.item.name }}</div>
+                                        <small class="text-muted">Unit: {{ data.item.unit }}</small>
+                                    </div>
+                                </div>
+                            </td>
+                            <td>
+                                <span class="fw-semibold text-dark">${{ "%.2f"|format(data.item.price) }}</span>
+                            </td>
+                            <td>
+                                <form action="{{ url_for('update_cart_item', item_id=data.item.id) }}" method="POST" class="d-flex gap-1 align-items-center">
+                                    <input type="number" name="quantity" class="form-control form-control-sm text-center" value="{{ data.quantity }}" min="1" max="99" style="width: 75px;" required>
+                                    <button type="submit" class="btn btn-outline-primary btn-sm py-1 px-2" title="Update Quantity">
+                                        <i class="bi bi-arrow-repeat"></i>
+                                    </button>
+                                </form>
+                            </td>
+                            <td>
+                                <span class="fw-bold text-success">${{ "%.2f"|format(data.item.price * data.quantity) }}</span>
+                            </td>
+                            <td class="text-end">
+                                <form action="{{ url_for('remove_from_cart', item_id=data.item.id) }}" method="POST" class="d-inline">
+                                    <button type="submit" class="btn btn-link text-danger p-0 border-0" title="Remove Item">
+                                        <i class="bi bi-trash3 fs-5"></i>
+                                    </button>
+                                </form>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Order Summary Sidebar -->
+    <div class="col-lg-4">
+        <div class="dashboard-card shadow-sm sticky-top" style="top: 90px;">
+            <h5 class="fw-bold mb-3 text-dark">Order Summary</h5>
+            
+            <div class="d-flex justify-content-between mb-2">
+                <span class="text-muted">Produce Items:</span>
+                <span class="fw-semibold text-dark">{{ cart_items | length }} items</span>
+            </div>
+            
+            <div class="d-flex justify-content-between mb-2">
+                <span class="text-muted">Fulfillment:</span>
+                <span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill">
+                    Hyperlocal Delivery
+                </span>
+            </div>
+
+            <div class="d-flex justify-content-between mb-3">
+                <span class="text-muted">Payment Method:</span>
+                <span class="fw-semibold text-dark">Cash on Delivery</span>
+            </div>
+
+            <hr class="my-3">
+
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <span class="fs-5 fw-bold text-dark">Grand Total</span>
+                <span class="fs-4 fw-extrabold text-success">${{ "%.2f"|format(total_price) }}</span>
+            </div>
+
+            <a href="{{ url_for('checkout') }}" class="btn btn-primary w-100 py-2 fs-6">
+                <span>Proceed to Checkout</span>
+                <i class="bi bi-arrow-right ms-1"></i>
+            </a>
+
+            <div class="text-center mt-3">
+                <small class="text-muted">
+                    <i class="bi bi-shield-lock me-1"></i> Transparent pricing directly from farmers
+                </small>
+            </div>
+        </div>
+    </div>
+    {% else %}
+    <!-- Empty Cart State -->
+    <div class="col-12">
+        <div class="dashboard-card text-center py-5">
+            <div class="empty-state-icon">
+                <i class="bi bi-cart-x"></i>
+            </div>
+            <h4 class="empty-state-title">Your shopping cart is empty</h4>
+            <p class="empty-state-desc">You haven't added any fresh farm produce to your cart yet. Discover nearby growers now!</p>
+            <a href="{{ url_for('home') }}" class="btn btn-primary px-4">
+                <i class="bi bi-shop me-1"></i> Browse Local Farms
+            </a>
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,6 @@
+Flask
+Flask-Login
+Flask-Bcrypt
+pymongo
+Flask-SocketIO
+python-dotenv

@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+
+{% block title %}{{ farm.name }} - Fresh Farm Produce{% endblock %}
+
+{% block content %}
+<!-- Farm Header Banner -->
+<div class="marketplace-card mb-4 bg-white">
+    <div class="row align-items-center gy-3">
+        <div class="col-md-8">
+            <div class="d-flex align-items-center gap-3">
+                <div class="farm-avatar" style="width: 58px; height: 58px; font-size: 2rem;">
+                    <i class="bi bi-tree"></i>
+                </div>
+                <div>
+                    <div class="d-flex align-items-center gap-2 mb-1">
+                        <h2 class="fw-bold mb-0 text-dark">{{ farm.name }}</h2>
+                        <span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill">
+                            <i class="bi bi-patch-check-fill me-1"></i>{{ farm.farm_type }}
+                        </span>
+                    </div>
+                    <p class="text-muted small mb-0">
+                        <i class="bi bi-geo-alt-fill text-danger me-1"></i>{{ farm.address }}
+                    </p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4 text-md-end">
+            <a href="{{ url_for('home') }}" class="btn btn-outline-primary btn-sm">
+                <i class="bi bi-arrow-left"></i> All Nearby Farms
+            </a>
+            {% if session.get('cart') %}
+                <a href="{{ url_for('view_cart') }}" class="btn btn-primary btn-sm ms-2">
+                    <i class="bi bi-cart3"></i> View Cart ({{ session['cart'] | length }})
+                </a>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- Produce Items Grid -->
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+        <h4 class="fw-bold mb-1">Available Produce</h4>
+        <p class="text-muted small mb-0">Direct from harvest. Freshly harvested for your order.</p>
+    </div>
+    <div>
+        <span class="badge bg-light text-dark border px-3 py-2">
+            <i class="bi bi-basket2 text-success me-1"></i> {{ produce_items | length }} Products Listed
+        </span>
+    </div>
+</div>
+
+<div class="row g-4 mb-5">
+    {% for item in produce_items %}
+        <div class="col-md-6 col-lg-4">
+            <div class="produce-card">
+                {% if item.image_url %}
+                <div class="produce-card-img-wrap mb-3 rounded-3 overflow-hidden border" style="height: 140px; background: #f8fafc;">
+                    <img src="{{ item.image_url }}" alt="{{ item.name }}" style="width: 100%; height: 100%; object-fit: cover;" onerror="this.parentElement.style.display='none';">
+                </div>
+                {% endif %}
+                <div class="produce-card-top">
+                    <div class="d-flex justify-content-between align-items-start mb-2">
+                        <h5 class="fw-bold text-dark mb-0">{{ item.name }}</h5>
+                        <span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill">
+                            In Stock
+                        </span>
+                    </div>
+                    
+                    <div class="my-2">
+                        <span class="produce-price-tag">${{ "%.2f"|format(item.price) }}</span>
+                        <span class="produce-unit">/ {{ item.unit }}</span>
+                    </div>
+                    
+                    <p class="text-muted small mb-0">
+                        {{ item.description if item.description else 'Farm-fresh organic quality produce.' }}
+                    </p>
+                </div>
+
+                <div class="pt-3 border-top mt-3">
+                    {% if current_user.is_authenticated and current_user.role == 'customer' %}
+                    <form action="{{ url_for('add_to_cart', item_id=item.id) }}" method="POST">
+                        <button type="submit" class="btn btn-primary w-100">
+                            <i class="bi bi-cart-plus me-1"></i> Add to Cart
+                        </button>
+                    </form>
+                    {% elif not current_user.is_authenticated %}
+                    <a href="{{ url_for('login') }}" class="btn btn-secondary w-100 btn-sm">
+                        <i class="bi bi-box-arrow-in-right me-1"></i> Login to Order
+                    </a>
+                    {% else %}
+                    <span class="badge bg-light text-muted w-100 py-2 border">
+                        Logged in as {{ current_user.role }}
+                    </span>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    {% else %}
+        <div class="col-12">
+            <div class="dashboard-card text-center py-5">
+                <div class="empty-state-icon">
+                    <i class="bi bi-basket3"></i>
+                </div>
+                <h4 class="empty-state-title">No produce items currently listed</h4>
+                <p class="empty-state-desc">This farm has not added items to their public catalog yet. Please check back soon!</p>
+                <a href="{{ url_for('home') }}" class="btn btn-primary">
+                    <i class="bi bi-arrow-left me-1"></i> Explore Other Farms
+                </a>
+            </div>
+        </div>
+    {% endfor %}
+</div>
+{% endblock %}

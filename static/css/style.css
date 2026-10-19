@@ -1,0 +1,1052 @@
+/* ==========================================================================
+   FarmFetch - Premium Agricultural Marketplace Design System
+   ========================================================================== */
+
+/* --- 1. Design Tokens & Variables --- */
+:root {
+    /* Forest & Agricultural Green Palette */
+    --primary-forest: #1b4332;
+    --primary-dark: #204e38;
+    --primary-main: #2d6a4f;
+    --primary-accent: #40916c;
+    --accent-sage: #52b788;
+    --accent-light: #74c69d;
+    --accent-mint: #d8f3dc;
+    --accent-mint-subtle: #f0fdf4;
+    
+    /* Warm & Earthy Accents */
+    --earth-warm: #d4a373;
+    --earth-sand: #faedcd;
+    --status-placed: #0284c7;
+    --status-prep: #d97706;
+    --status-ready: #16a34a;
+    --status-pickup: #9333ea;
+    --status-delivered: #059669;
+    --status-rejected: #dc2626;
+
+    /* Neutrals & Surfaces */
+    --surface-bg: #f7faf7;
+    --surface-card: #ffffff;
+    --surface-card-hover: #ffffff;
+    --surface-alt: #f1f5f2;
+    
+    /* Text Hierarchy */
+    --text-heading: #132a13;
+    --text-body: #2d3748;
+    --text-muted: #64748b;
+    --text-subtle: #94a3b8;
+    --text-white: #ffffff;
+
+    /* Borders & Outlines */
+    --border-light: #e6ede6;
+    --border-subtle: #d1dfd4;
+    --border-focus: #2d6a4f;
+
+    /* Elevated Shadows */
+    --shadow-xs: 0 1px 2px rgba(27, 67, 50, 0.04);
+    --shadow-sm: 0 2px 6px rgba(27, 67, 50, 0.06);
+    --shadow-md: 0 6px 18px rgba(27, 67, 50, 0.08);
+    --shadow-lg: 0 12px 32px rgba(27, 67, 50, 0.12);
+    --shadow-float: 0 18px 40px rgba(27, 67, 50, 0.14);
+
+    /* Radii */
+    --radius-sm: 8px;
+    --radius-md: 12px;
+    --radius-lg: 16px;
+    --radius-xl: 22px;
+    --radius-pill: 9999px;
+
+    /* Transitions */
+    --transition-fast: 0.18s cubic-bezier(0.4, 0, 0.2, 1);
+    --transition-base: 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* --- 2. Base & Typography --- */
+* {
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    background-color: var(--surface-bg);
+    color: var(--text-body);
+    line-height: 1.6;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    margin: 0;
+    -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3, h4, h5, h6 {
+    color: var(--text-heading);
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    margin-bottom: 0.5rem;
+}
+
+a {
+    color: var(--primary-main);
+    text-decoration: none;
+    transition: color var(--transition-fast);
+}
+
+a:hover {
+    color: var(--primary-dark);
+}
+
+/* --- 3. Navigation Bar --- */
+.navbar-custom {
+    background-color: #ffffff;
+    border-bottom: 1px solid var(--border-light);
+    box-shadow: var(--shadow-xs);
+    position: sticky;
+    top: 0;
+    z-index: 1030;
+    padding: 0.75rem 0;
+}
+
+.navbar-brand-custom {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.6rem;
+    font-size: 1.45rem;
+    font-weight: 800;
+    color: var(--primary-forest) !important;
+    letter-spacing: -0.03em;
+}
+
+.brand-icon-badge {
+    width: 38px;
+    height: 38px;
+    background: linear-gradient(135deg, var(--primary-main), var(--primary-forest));
+    color: #ffffff;
+    border-radius: var(--radius-md);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.25rem;
+    box-shadow: 0 4px 10px rgba(45, 106, 79, 0.25);
+}
+
+.navbar-custom .nav-link {
+    color: var(--text-body) !important;
+    font-weight: 600;
+    font-size: 0.95rem;
+    padding: 0.5rem 0.9rem !important;
+    border-radius: var(--radius-sm);
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    transition: all var(--transition-fast);
+}
+
+.navbar-custom .nav-link:hover {
+    color: var(--primary-main) !important;
+    background-color: var(--accent-mint-subtle);
+}
+
+.navbar-custom .nav-link.active {
+    color: var(--primary-forest) !important;
+    background-color: var(--accent-mint);
+}
+
+.nav-user-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    background-color: var(--surface-alt);
+    border: 1px solid var(--border-light);
+    padding: 0.35rem 0.85rem;
+    border-radius: var(--radius-pill);
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--text-heading);
+}
+
+.nav-role-pill {
+    text-transform: capitalize;
+    font-size: 0.75rem;
+    padding: 0.15rem 0.5rem;
+    border-radius: var(--radius-pill);
+    background-color: var(--primary-forest);
+    color: #ffffff;
+}
+
+/* Cart Badge */
+.cart-badge {
+    background-color: var(--primary-main);
+    color: #ffffff;
+    font-size: 0.75rem;
+    padding: 0.2rem 0.5rem;
+    border-radius: var(--radius-pill);
+    font-weight: 700;
+}
+
+/* --- 4. Hero Section --- */
+.hero-agricultural {
+    position: relative;
+    background: linear-gradient(135deg, var(--primary-forest) 0%, var(--primary-main) 60%, var(--primary-accent) 100%);
+    border-radius: var(--radius-xl);
+    padding: 3.5rem 2.5rem;
+    color: #ffffff;
+    margin-bottom: 2.25rem;
+    overflow: hidden;
+    box-shadow: var(--shadow-lg);
+}
+
+.hero-agricultural::after {
+    content: '';
+    position: absolute;
+    top: -50%;
+    right: -20%;
+    width: 600px;
+    height: 600px;
+    background: radial-gradient(circle, rgba(255, 255, 255, 0.12) 0%, rgba(255, 255, 255, 0) 70%);
+    border-radius: 50%;
+    pointer-events: none;
+}
+
+.hero-tagline {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    background-color: rgba(255, 255, 255, 0.15);
+    backdrop-filter: blur(8px);
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    padding: 0.35rem 0.9rem;
+    border-radius: var(--radius-pill);
+    font-size: 0.85rem;
+    font-weight: 600;
+    margin-bottom: 1rem;
+    color: #ffffff;
+}
+
+.hero-title {
+    font-size: 2.6rem;
+    font-weight: 800;
+    line-height: 1.18;
+    color: #ffffff;
+    margin-bottom: 0.85rem;
+}
+
+.hero-description {
+    font-size: 1.12rem;
+    color: rgba(255, 255, 255, 0.9);
+    max-width: 640px;
+    margin-bottom: 1.75rem;
+}
+
+/* Hero Search & Filter Bar */
+.search-filter-card {
+    background: #ffffff;
+    padding: 0.6rem 0.85rem;
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-float);
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.search-input-group {
+    flex: 1;
+    min-width: 240px;
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+
+.search-input-group i {
+    position: absolute;
+    left: 1rem;
+    color: var(--text-muted);
+    font-size: 1.1rem;
+}
+
+.search-input-group input {
+    width: 100%;
+    padding: 0.75rem 1rem 0.75rem 2.75rem;
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-md);
+    font-size: 0.95rem;
+    outline: none;
+    transition: all var(--transition-fast);
+}
+
+.search-input-group input:focus {
+    border-color: var(--primary-main);
+    box-shadow: 0 0 0 3px rgba(45, 106, 79, 0.15);
+}
+
+/* --- 5. Cards & Containers --- */
+.dashboard-card,
+.marketplace-card {
+    background-color: var(--surface-card);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-lg);
+    padding: 1.75rem;
+    box-shadow: var(--shadow-sm);
+    transition: all var(--transition-base);
+}
+
+.dashboard-card-sm {
+    padding: 1.25rem;
+}
+
+/* Farm Grid & Farm Card */
+.farm-card {
+    background-color: var(--surface-card);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-lg);
+    padding: 1.5rem;
+    transition: all var(--transition-base);
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    position: relative;
+    text-decoration: none !important;
+    color: inherit !important;
+}
+
+.farm-card:hover {
+    transform: translateY(-4px);
+    border-color: var(--accent-sage);
+    box-shadow: var(--shadow-md);
+}
+
+.farm-badge-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    margin-bottom: 0.85rem;
+}
+
+.farm-avatar {
+    width: 46px;
+    height: 46px;
+    background-color: var(--accent-mint);
+    color: var(--primary-forest);
+    border-radius: var(--radius-md);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.4rem;
+}
+
+.distance-badge {
+    background-color: var(--accent-mint-subtle);
+    color: var(--primary-dark);
+    font-size: 0.8rem;
+    font-weight: 700;
+    padding: 0.3rem 0.65rem;
+    border-radius: var(--radius-pill);
+    border: 1px solid var(--accent-mint);
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+}
+
+.farm-type-pill {
+    background-color: var(--surface-alt);
+    color: var(--text-body);
+    font-size: 0.78rem;
+    font-weight: 600;
+    padding: 0.25rem 0.6rem;
+    border-radius: var(--radius-sm);
+}
+
+/* Produce Card */
+.produce-card {
+    background-color: var(--surface-card);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-lg);
+    padding: 1.4rem;
+    transition: all var(--transition-base);
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+}
+
+.produce-card:hover {
+    transform: translateY(-4px);
+    box-shadow: var(--shadow-md);
+    border-color: var(--accent-sage);
+}
+
+.produce-card-top {
+    margin-bottom: 1rem;
+}
+
+.produce-price-tag {
+    color: var(--primary-forest);
+    font-size: 1.35rem;
+    font-weight: 800;
+}
+
+.produce-unit {
+    color: var(--text-muted);
+    font-size: 0.85rem;
+    font-weight: 500;
+}
+
+/* --- 6. Metric & KPI Stat Cards --- */
+.stat-card {
+    background-color: var(--surface-card);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-lg);
+    padding: 1.35rem;
+    display: flex;
+    align-items: center;
+    gap: 1.1rem;
+    box-shadow: var(--shadow-xs);
+    transition: all var(--transition-base);
+}
+
+.stat-card:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-sm);
+}
+
+.stat-icon {
+    width: 52px;
+    height: 52px;
+    border-radius: var(--radius-md);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.5rem;
+}
+
+.stat-icon.green {
+    background-color: var(--accent-mint);
+    color: var(--primary-forest);
+}
+
+.stat-icon.amber {
+    background-color: #fef3c7;
+    color: #b45309;
+}
+
+.stat-icon.blue {
+    background-color: #e0f2fe;
+    color: #0369a1;
+}
+
+.stat-icon.purple {
+    background-color: #f3e8ff;
+    color: #7e22ce;
+}
+
+.stat-value {
+    font-size: 1.75rem;
+    font-weight: 800;
+    line-height: 1.1;
+    color: var(--text-heading);
+    margin-bottom: 0.15rem;
+}
+
+.stat-label {
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+/* --- 7. Buttons & Form Controls --- */
+.btn {
+    border-radius: var(--radius-md);
+    font-weight: 600;
+    font-size: 0.92rem;
+    padding: 0.55rem 1.15rem;
+    transition: all var(--transition-fast);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.45rem;
+}
+
+.btn-primary {
+    background-color: var(--primary-main);
+    border-color: var(--primary-main);
+    color: #ffffff;
+}
+
+.btn-primary:hover, .btn-primary:focus {
+    background-color: var(--primary-forest);
+    border-color: var(--primary-forest);
+    color: #ffffff;
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-sm);
+}
+
+.btn-outline-primary {
+    color: var(--primary-main);
+    border-color: var(--primary-main);
+    background-color: transparent;
+}
+
+.btn-outline-primary:hover {
+    background-color: var(--primary-main);
+    border-color: var(--primary-main);
+    color: #ffffff;
+    transform: translateY(-1px);
+}
+
+.btn-secondary {
+    background-color: var(--surface-alt);
+    border-color: var(--border-light);
+    color: var(--text-body);
+}
+
+.btn-secondary:hover {
+    background-color: var(--border-light);
+    border-color: var(--border-subtle);
+    color: var(--text-heading);
+}
+
+.btn-success {
+    background-color: #10b981;
+    border-color: #10b981;
+}
+
+.btn-success:hover {
+    background-color: #059669;
+    border-color: #059669;
+}
+
+/* Forms */
+.form-control, .form-select {
+    border: 1.5px solid var(--border-light);
+    border-radius: var(--radius-md);
+    padding: 0.65rem 0.95rem;
+    font-size: 0.95rem;
+    color: var(--text-heading);
+    background-color: #ffffff;
+    transition: all var(--transition-fast);
+}
+
+.form-control:focus, .form-select:focus {
+    border-color: var(--primary-main);
+    box-shadow: 0 0 0 3px rgba(45, 106, 79, 0.15);
+    background-color: #ffffff;
+}
+
+.form-label {
+    font-size: 0.88rem;
+    font-weight: 600;
+    color: var(--text-heading);
+    margin-bottom: 0.4rem;
+}
+
+.auth-form-card {
+    background-color: var(--surface-card);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-xl);
+    padding: 2.5rem;
+    box-shadow: var(--shadow-md);
+    max-width: 480px;
+    margin: 2.5rem auto;
+}
+
+/* --- 8. Status Stepper / Order Timeline --- */
+.order-stepper {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    position: relative;
+    margin: 2rem 0;
+    padding: 0 0.5rem;
+}
+
+.order-stepper::before {
+    content: '';
+    position: absolute;
+    top: 20px;
+    left: 40px;
+    right: 40px;
+    height: 3px;
+    background-color: var(--border-light);
+    z-index: 1;
+}
+
+.stepper-step {
+    position: relative;
+    z-index: 2;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+}
+
+.stepper-circle {
+    width: 42px;
+    height: 42px;
+    border-radius: 50%;
+    background-color: #ffffff;
+    border: 2px solid var(--border-subtle);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 1rem;
+    color: var(--text-muted);
+    transition: all var(--transition-base);
+    margin-bottom: 0.5rem;
+}
+
+.stepper-label {
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+/* Active & Completed States */
+.stepper-step.completed .stepper-circle {
+    background-color: var(--primary-main);
+    border-color: var(--primary-main);
+    color: #ffffff;
+}
+
+.stepper-step.completed .stepper-label {
+    color: var(--primary-main);
+}
+
+.stepper-step.active .stepper-circle {
+    background-color: var(--accent-mint);
+    border-color: var(--primary-forest);
+    color: var(--primary-forest);
+    box-shadow: 0 0 0 4px rgba(45, 106, 79, 0.18);
+    animation: pulseActive 2s infinite;
+}
+
+.stepper-step.active .stepper-label {
+    color: var(--primary-forest);
+}
+
+@keyframes pulseActive {
+    0% { box-shadow: 0 0 0 0 rgba(45, 106, 79, 0.3); }
+    70% { box-shadow: 0 0 0 8px rgba(45, 106, 79, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(45, 106, 79, 0); }
+}
+
+/* --- 9. Real-Time Chat Box --- */
+#chat-box {
+    background: #ffffff;
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-lg);
+    padding: 1.25rem;
+    height: 280px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 0.85rem;
+    box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.02);
+}
+
+.chat-message {
+    display: flex;
+    width: 100%;
+}
+
+.chat-message.self {
+    justify-content: flex-end;
+}
+
+.chat-message.other {
+    justify-content: flex-start;
+}
+
+.chat-bubble {
+    max-width: 78%;
+    padding: 0.65rem 1.1rem;
+    border-radius: var(--radius-lg);
+    font-size: 0.92rem;
+    position: relative;
+    word-wrap: break-word;
+}
+
+.chat-message.self .chat-bubble {
+    background-color: var(--primary-main);
+    color: #ffffff;
+    border-bottom-right-radius: 4px;
+}
+
+.chat-message.self .chat-bubble strong {
+    display: block;
+    font-size: 0.75rem;
+    color: var(--accent-mint);
+    margin-bottom: 0.15rem;
+}
+
+.chat-message.other .chat-bubble {
+    background-color: var(--surface-alt);
+    color: var(--text-heading);
+    border: 1px solid var(--border-light);
+    border-bottom-left-radius: 4px;
+}
+
+.chat-message.other .chat-bubble strong {
+    display: block;
+    font-size: 0.75rem;
+    color: var(--primary-main);
+    margin-bottom: 0.15rem;
+}
+
+.typing-indicator {
+    height: 1.4rem;
+    font-size: 0.85rem;
+    font-style: italic;
+    color: var(--text-muted);
+    padding: 0 0.25rem;
+}
+
+/* --- 10. Tables & Data Display --- */
+.table-custom {
+    border-collapse: separate;
+    border-spacing: 0;
+    width: 100%;
+}
+
+.table-custom th {
+    background-color: var(--surface-alt);
+    color: var(--text-heading);
+    font-weight: 700;
+    font-size: 0.82rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    padding: 0.9rem 1rem;
+    border-bottom: 2px solid var(--border-light);
+}
+
+.table-custom td {
+    padding: 1rem;
+    vertical-align: middle;
+    border-bottom: 1px solid var(--border-light);
+    font-size: 0.93rem;
+}
+
+.table-custom tbody tr:hover td {
+    background-color: var(--accent-mint-subtle);
+}
+
+/* Status Badges */
+.status-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.3rem 0.75rem;
+    border-radius: var(--radius-pill);
+    font-size: 0.8rem;
+    font-weight: 700;
+}
+
+.status-pill.status-Placed { background-color: #e0f2fe; color: #0369a1; }
+.status-pill.status-Preparing { background-color: #fef3c7; color: #b45309; }
+.status-pill.status-Ready-for-Pickup { background-color: #dcfce7; color: #15803d; }
+.status-pill.status-Picked-Up { background-color: #f3e8ff; color: #7e22ce; }
+.status-pill.status-Delivered { background-color: #d1fae5; color: #065f46; }
+.status-pill.status-Rejected { background-color: #fee2e2; color: #b91c1c; }
+
+/* --- 11. Empty States --- */
+.empty-state {
+    text-align: center;
+    padding: 3.5rem 1.5rem;
+}
+
+.empty-state-icon {
+    width: 72px;
+    height: 72px;
+    border-radius: 50%;
+    background-color: var(--accent-mint-subtle);
+    color: var(--primary-main);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 2.2rem;
+    margin: 0 auto 1.25rem;
+}
+
+.empty-state-title {
+    font-size: 1.35rem;
+    font-weight: 700;
+    color: var(--text-heading);
+    margin-bottom: 0.4rem;
+}
+
+.empty-state-desc {
+    color: var(--text-muted);
+    max-width: 420px;
+    margin: 0 auto 1.5rem;
+    font-size: 0.95rem;
+}
+
+/* --- 12. Footer --- */
+.footer-custom {
+    margin-top: auto;
+    background-color: #ffffff;
+    border-top: 1px solid var(--border-light);
+    padding: 2.5rem 0 1.5rem;
+    color: var(--text-muted);
+    font-size: 0.9rem;
+}
+
+/* --- 13. Mobile Responsiveness --- */
+@media (max-width: 768px) {
+    .hero-title {
+        font-size: 2rem;
+    }
+    .hero-agricultural {
+        padding: 2.25rem 1.5rem;
+    }
+    .order-stepper {
+        overflow-x: auto;
+        padding-bottom: 1rem;
+    }
+    .order-stepper::before {
+        display: none;
+    }
+    .dashboard-card {
+        padding: 1.25rem;
+    }
+}
+
+/* --- 14. Dashboard Shared Layout (All 3 Dashboards) --- */
+.nav-pills-dash .nav-link {
+    color: var(--text-body);
+    font-weight: 600;
+    border-radius: var(--radius-md);
+    padding: 0.65rem 1rem;
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    transition: all var(--transition-fast);
+    font-size: 0.93rem;
+}
+.nav-pills-dash .nav-link:hover {
+    background: var(--accent-mint-subtle);
+    color: var(--primary-forest);
+}
+.nav-pills-dash .nav-link.active {
+    background: var(--primary-main);
+    color: #fff;
+}
+
+/* Section Headers */
+.section-hdr {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1.25rem;
+}
+.section-hdr h5 {
+    font-weight: 700;
+    margin-bottom: 0;
+    font-size: 1.05rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+/* Hero Banners */
+.welcome-hero,
+.farm-hero,
+.driver-hero {
+    border-radius: var(--radius-xl);
+    padding: 1.75rem 2rem;
+    color: #fff;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 1rem;
+    box-shadow: var(--shadow-md);
+    margin-bottom: 1.75rem;
+}
+.welcome-hero { background: linear-gradient(135deg, var(--primary-forest), var(--primary-main) 60%, var(--primary-accent)); }
+.farm-hero { background: linear-gradient(135deg, var(--primary-forest), var(--primary-main) 55%, var(--primary-accent)); }
+.driver-hero { background: linear-gradient(135deg, #1e3a5f, #1d4ed8 60%, #3b82f6); }
+.welcome-hero h3, .farm-hero h3, .driver-hero h3 { color: #fff; font-weight: 800; margin-bottom: 0.25rem; }
+.welcome-hero p, .farm-hero p, .driver-hero p { color: rgba(255,255,255,0.85); margin-bottom: 0; font-size: 0.93rem; }
+
+/* Pulse dot animation */
+.pulse-live {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: #10b981;
+    display: inline-block;
+    animation: pulseActive 1.8s infinite;
+    margin-right: 0.35rem;
+}
+
+/* Active order cards (customer) */
+.active-order-card {
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-lg);
+    padding: 1.1rem 1.25rem;
+    background: #fff;
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+    transition: all var(--transition-fast);
+    position: relative;
+    overflow: hidden;
+}
+.active-order-card::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 4px;
+    background: var(--primary-main);
+    border-radius: 4px 0 0 4px;
+}
+.active-order-card.s-Placed::before { background: #0284c7; }
+.active-order-card.s-Preparing::before { background: #d97706; }
+.active-order-card.s-Ready-for-Pickup::before { background: #16a34a; }
+.active-order-card.s-Picked-Up::before { background: #9333ea; }
+.active-order-card:hover { box-shadow: var(--shadow-md); transform: translateY(-2px); }
+
+/* Order mini timeline */
+.order-timeline-mini {
+    display: flex;
+    gap: 0.35rem;
+    align-items: center;
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    margin-top: 0.3rem;
+}
+.order-timeline-mini .step-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--border-subtle);
+    flex-shrink: 0;
+}
+.order-timeline-mini .step-dot.done { background: var(--primary-main); }
+.order-timeline-mini .step-dot.step-active { background: #f59e0b; box-shadow: 0 0 0 3px rgba(245,158,11,0.25); }
+
+/* Delivery cards (driver) */
+.delivery-card {
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-lg);
+    padding: 1.25rem;
+    background: #fff;
+    transition: all var(--transition-fast);
+    position: relative;
+    overflow: hidden;
+}
+.delivery-card::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 4px;
+    border-radius: 4px 0 0 4px;
+}
+.delivery-card.in-progress::before { background: #9333ea; }
+.delivery-card.available::before { background: #16a34a; }
+.delivery-card:hover { box-shadow: var(--shadow-md); transform: translateY(-2px); }
+
+/* Route info boxes */
+.route-info {
+    background: var(--surface-alt);
+    border-radius: var(--radius-md);
+    padding: 0.75rem 1rem;
+    border: 1px solid var(--border-light);
+}
+
+/* Action cards (farmer quick actions) */
+.action-card {
+    background: linear-gradient(135deg, #d8f3dc, #f0fdf4);
+    border: 1px solid var(--accent-mint);
+    border-radius: var(--radius-lg);
+    padding: 1rem 1.25rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    text-decoration: none;
+    color: var(--text-heading);
+    transition: all var(--transition-fast);
+}
+.action-card:hover {
+    background: linear-gradient(135deg, #b7e4c7, #d8f3dc);
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-sm);
+    color: var(--text-heading);
+}
+
+/* Driver status badges */
+.status-indicator {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.4rem 1rem;
+    border-radius: var(--radius-pill);
+    font-weight: 700;
+    font-size: 0.85rem;
+}
+.status-available { background: #d1fae5; color: #065f46; border: 1px solid #6ee7b7; }
+.status-busy { background: #fef3c7; color: #b45309; border: 1px solid #fcd34d; }
+
+/* Warning boxes */
+.warning-box {
+    background: #fff7ed;
+    border: 1px solid #fed7aa;
+    border-radius: var(--radius-lg);
+    padding: 1rem 1.25rem;
+    display: flex;
+    align-items: flex-start;
+    gap: 0.75rem;
+}
+
+/* GPS status bar */
+.gps-status-bar {
+    background: linear-gradient(90deg, #d1fae5, #f0fdf4);
+    border: 1px solid #6ee7b7;
+    border-radius: var(--radius-lg);
+    padding: 0.75rem 1.25rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+
+/* Wishlist placeholder */
+.wishlist-placeholder {
+    border: 2px dashed var(--border-subtle);
+    background: var(--surface-alt);
+    border-radius: var(--radius-lg);
+    padding: 2rem 1.5rem;
+    text-align: center;
+    color: var(--text-muted);
+}
+
+/* Produce search bar */
+.search-bar-sm { position: relative; }
+.search-bar-sm input { padding-left: 2.25rem; }
+.search-bar-sm i { position: absolute; left: 0.75rem; top: 50%; transform: translateY(-50%); color: var(--text-muted); }
+
+/* Sticky sidebar */
+.dash-sidebar { position: sticky; top: 82px; }
+
+/* --- 15. Responsive Dashboard --- */
+@media (max-width: 991px) {
+    .dash-sidebar { position: static; }
+    .welcome-hero, .farm-hero, .driver-hero { flex-direction: column; align-items: flex-start; }
+}
+@media (max-width: 576px) {
+    .welcome-hero, .farm-hero, .driver-hero { padding: 1.25rem 1rem; }
+    .section-hdr { flex-direction: column; align-items: flex-start; gap: 0.5rem; }
+}

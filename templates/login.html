@@ -1,0 +1,227 @@
+{% extends "base.html" %}
+
+{% block title %}Login - FarmFetch{% endblock %}
+
+{% block head_extra %}
+<style>
+.demo-login-card {
+    border: 1.5px solid var(--border-light);
+    border-radius: var(--radius-lg);
+    background: #fff;
+    padding: 0.9rem 1rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    text-decoration: none;
+    color: var(--text-heading);
+    transition: all var(--transition-fast);
+    margin-bottom: 0.65rem;
+}
+.demo-login-card:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-sm);
+    border-color: var(--primary-main);
+    background: var(--surface-alt);
+    color: var(--primary-main);
+}
+.demo-role-badge {
+    font-size: 0.72rem;
+    font-weight: 700;
+    padding: 0.2rem 0.6rem;
+    border-radius: var(--radius-pill);
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center my-4">
+    <div class="col-md-7 col-lg-5">
+        <div class="auth-form-card shadow-sm">
+            <!-- Brand Header -->
+            <div class="text-center mb-4">
+                <div class="brand-icon-badge mx-auto mb-3" style="width: 52px; height: 52px; font-size: 1.6rem;">
+                    <i class="bi bi-flower1"></i>
+                </div>
+                <h2 class="fw-bold text-dark mb-1">Welcome Back</h2>
+                <p class="text-muted small mb-0">Sign in to your FarmFetch marketplace account.</p>
+            </div>
+
+            <!-- 1-Click Instant Login (No Typing Needed) -->
+            <div class="p-3 rounded-3 mb-4" style="background: linear-gradient(135deg, #d8f3dc, #f0fdf4); border: 1.5px solid #b7e4c7;">
+                <div class="d-flex align-items-center justify-content-between mb-2">
+                    <span class="fw-bold text-dark" style="font-size: 0.88rem;">
+                        <i class="bi bi-lightning-charge-fill text-warning me-1"></i>1-Click Instant Demo Login
+                    </span>
+                    <span class="badge bg-success text-white rounded-pill" style="font-size: 0.68rem;">No Typing</span>
+                </div>
+                <p class="text-muted small mb-2" style="font-size: 0.78rem;">
+                    Click any role below to log in directly into that dashboard:
+                </p>
+
+                <div class="d-flex flex-column gap-1">
+                    <a href="{{ url_for('quick_login', role='farmer') }}" class="demo-login-card mb-1">
+                        <div class="d-flex align-items-center gap-2">
+                            <span class="farm-avatar" style="width:34px;height:34px;font-size:1.1rem;background:#d8f3dc;color:#166534;"><i class="bi bi-tree"></i></span>
+                            <div>
+                                <div class="fw-bold text-dark" style="font-size: 0.88rem;">Farmer Account</div>
+                                <small class="text-muted" style="font-size: 0.75rem;">farmer@farm.com</small>
+                            </div>
+                        </div>
+                        <span class="btn btn-sm btn-outline-success py-1 px-2 fw-semibold" style="font-size: 0.78rem;">
+                            Log In <i class="bi bi-arrow-right"></i>
+                        </span>
+                    </a>
+
+                    <a href="{{ url_for('quick_login', role='customer') }}" class="demo-login-card mb-1">
+                        <div class="d-flex align-items-center gap-2">
+                            <span class="farm-avatar" style="width:34px;height:34px;font-size:1.1rem;background:#e0f2fe;color:#0369a1;"><i class="bi bi-cart"></i></span>
+                            <div>
+                                <div class="fw-bold text-dark" style="font-size: 0.88rem;">Customer Account</div>
+                                <small class="text-muted" style="font-size: 0.75rem;">customer@farm.com</small>
+                            </div>
+                        </div>
+                        <span class="btn btn-sm btn-outline-primary py-1 px-2 fw-semibold" style="font-size: 0.78rem;">
+                            Log In <i class="bi bi-arrow-right"></i>
+                        </span>
+                    </a>
+
+                    <a href="{{ url_for('quick_login', role='driver') }}" class="demo-login-card mb-0">
+                        <div class="d-flex align-items-center gap-2">
+                            <span class="farm-avatar" style="width:34px;height:34px;font-size:1.1rem;background:#fef3c7;color:#b45309;"><i class="bi bi-truck"></i></span>
+                            <div>
+                                <div class="fw-bold text-dark" style="font-size: 0.88rem;">Delivery Driver Account</div>
+                                <small class="text-muted" style="font-size: 0.75rem;">driver@farm.com</small>
+                            </div>
+                        </div>
+                        <span class="btn btn-sm btn-outline-warning text-dark py-1 px-2 fw-semibold" style="font-size: 0.78rem;">
+                            Log In <i class="bi bi-arrow-right"></i>
+                        </span>
+                    </a>
+                </div>
+            </div>
+
+            <!-- Divider -->
+            <div class="d-flex align-items-center my-3">
+                <hr class="flex-grow-1 my-0 text-muted">
+                <span class="px-2 text-muted small fw-semibold" style="font-size: 0.75rem; text-transform: uppercase;">or sign in manually</span>
+                <hr class="flex-grow-1 my-0 text-muted">
+            </div>
+
+            <!-- Standard Login Form -->
+            <form method="POST" id="login-form">
+                <div class="mb-3">
+                    <div class="d-flex justify-content-between align-items-center mb-1">
+                        <label for="email" class="form-label mb-0">Email Address</label>
+                        <div class="dropdown">
+                            <button class="btn btn-link btn-sm p-0 text-decoration-none text-success" type="button" data-bs-toggle="dropdown" style="font-size: 0.78rem;">
+                                <i class="bi bi-lightning-charge"></i> Auto-fill demo credentials
+                            </button>
+                            <ul class="dropdown-menu dropdown-menu-end shadow-sm border-0 py-1" style="font-size: 0.82rem;">
+                                <li><a class="dropdown-item py-1 fill-cred" href="#" data-email="farmer@farm.com" data-pass="password123"><i class="bi bi-tree me-1 text-success"></i> Farmer (farmer@farm.com)</a></li>
+                                <li><a class="dropdown-item py-1 fill-cred" href="#" data-email="customer@farm.com" data-pass="password123"><i class="bi bi-cart me-1 text-primary"></i> Customer (customer@farm.com)</a></li>
+                                <li><a class="dropdown-item py-1 fill-cred" href="#" data-email="driver@farm.com" data-pass="password123"><i class="bi bi-truck me-1 text-warning"></i> Driver (driver@farm.com)</a></li>
+                            </ul>
+                        </div>
+                    </div>
+                    <div class="input-group">
+                        <span class="input-group-text bg-white border-end-0 text-muted"><i class="bi bi-envelope"></i></span>
+                        <input type="email" class="form-control border-start-0 ps-0" id="email" name="email" placeholder="name@example.com" required>
+                    </div>
+                </div>
+
+                <div class="mb-3">
+                    <label for="password" class="form-label">Password</label>
+                    <div class="input-group">
+                        <span class="input-group-text bg-white border-end-0 text-muted"><i class="bi bi-lock"></i></span>
+                        <input type="password" class="form-control border-start-0 border-end-0 ps-0" id="password" name="password" placeholder="••••••••" required>
+                        <button class="btn btn-outline-secondary bg-white border-start-0 text-muted" type="button" id="btn-toggle-pw" title="Show/Hide Password">
+                            <i class="bi bi-eye" id="pw-eye-icon"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="remember-me" checked>
+                        <label class="form-check-label small text-muted" for="remember-me">Remember my login</label>
+                    </div>
+                    <span class="text-muted small" style="font-size:0.75rem;">Password: <code>password123</code></span>
+                </div>
+
+                <button type="submit" class="btn btn-primary w-100 py-2 fw-bold fs-6 mb-3">
+                    <i class="bi bi-box-arrow-in-right me-1"></i> Log In
+                </button>
+            </form>
+
+            <div class="text-center border-top pt-3 mt-2">
+                <p class="text-muted small mb-0">
+                    Don't have an account yet? 
+                    <a href="{{ url_for('register') }}" class="fw-bold text-success">Create an account</a>
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function() {
+    'use strict';
+    const emailInput = document.getElementById('email');
+    const pwInput = document.getElementById('password');
+    const btnTogglePw = document.getElementById('btn-toggle-pw');
+    const eyeIcon = document.getElementById('pw-eye-icon');
+    const rememberMe = document.getElementById('remember-me');
+    const loginForm = document.getElementById('login-form');
+
+    // 1. Restore remembered email/pass on load
+    const savedEmail = localStorage.getItem('farmfetch_remember_email');
+    const savedPass = localStorage.getItem('farmfetch_remember_pass');
+    if (savedEmail && !emailInput.value) {
+        emailInput.value = savedEmail;
+        if (savedPass && !pwInput.value) {
+            pwInput.value = savedPass;
+        }
+    } else if (!emailInput.value) {
+        // Default to farmer demo account so it's ready without typing!
+        emailInput.value = 'farmer@farm.com';
+        pwInput.value = 'password123';
+    }
+
+    // 2. Save on submit
+    loginForm.addEventListener('submit', () => {
+        if (rememberMe.checked) {
+            localStorage.setItem('farmfetch_remember_email', emailInput.value);
+            localStorage.setItem('farmfetch_remember_pass', pwInput.value);
+        } else {
+            localStorage.removeItem('farmfetch_remember_email');
+            localStorage.removeItem('farmfetch_remember_pass');
+        }
+    });
+
+    // 3. Dropdown click fills credentials
+    document.querySelectorAll('.fill-cred').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.preventDefault();
+            emailInput.value = btn.dataset.email;
+            pwInput.value = btn.dataset.pass;
+            emailInput.focus();
+        });
+    });
+
+    // 4. Toggle password visibility
+    if (btnTogglePw) {
+        btnTogglePw.addEventListener('click', () => {
+            if (pwInput.type === 'password') {
+                pwInput.type = 'text';
+                eyeIcon.className = 'bi bi-eye-slash';
+            } else {
+                pwInput.type = 'password';
+                eyeIcon.className = 'bi bi-eye';
+            }
+        });
+    }
+})();
+</script>
+{% endblock %}

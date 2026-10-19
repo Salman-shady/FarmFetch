@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+
+{% block title %}My Orders - FarmFetch{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-10">
+        <div class="d-flex flex-wrap justify-content-between align-items-center mb-4 gap-3">
+            <div>
+                <h2 class="fw-bold mb-1"><i class="bi bi-bag-check text-success me-2"></i>My Order History</h2>
+                <p class="text-muted mb-0">Track and review all your fresh farm produce deliveries.</p>
+            </div>
+            <a href="{{ url_for('home') }}" class="btn btn-outline-primary btn-sm">
+                <i class="bi bi-plus-lg"></i> Browse Fresh Farms
+            </a>
+        </div>
+
+        {% if orders %}
+        <div class="dashboard-card shadow-sm p-0 overflow-hidden">
+            <div class="table-responsive">
+                <table class="table table-custom align-middle mb-0">
+                    <thead>
+                        <tr>
+                            <th>Order</th>
+                            <th>Farm Details</th>
+                            <th>Date Placed</th>
+                            <th>Items Count</th>
+                            <th>Total Price</th>
+                            <th>Status</th>
+                            <th class="text-end">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for order in orders %}
+                        <tr>
+                            <td>
+                                <a href="{{ url_for('order_details', order_id=order.id) }}" class="fw-bold text-success">
+                                    #{{ order.id }}
+                                </a>
+                            </td>
+                            <td>
+                                <div class="fw-semibold text-dark">{{ order.farm.name if order.farm else 'Local Farm' }}</div>
+                                <small class="text-muted"><i class="bi bi-geo-alt me-1"></i>{{ order.customer_address }}</small>
+                            </td>
+                            <td>
+                                <span class="text-muted small">
+                                    {{ order.created_at.strftime('%b %d, %Y - %I:%M %p') if order.created_at and order.created_at.strftime else 'Recently' }}
+                                </span>
+                            </td>
+                            <td>
+                                <span class="badge bg-light text-dark border">
+                                    {{ order.items | length }} items
+                                </span>
+                            </td>
+                            <td>
+                                <span class="fw-bold text-dark">${{ "%.2f"|format(order.total_price) }}</span>
+                            </td>
+                            <td>
+                                <span class="status-pill status-{{ order.status | replace(' ', '-') }}">
+                                    {% if order.status == 'Placed' %}
+                                        <i class="bi bi-clock-history"></i>
+                                    {% elif order.status == 'Preparing' %}
+                                        <i class="bi bi-gear-wide-connected"></i>
+                                    {% elif order.status == 'Ready for Pickup' %}
+                                        <i class="bi bi-box-seam"></i>
+                                    {% elif order.status == 'Picked Up' %}
+                                        <i class="bi bi-truck"></i>
+                                    {% elif order.status == 'Delivered' %}
+                                        <i class="bi bi-check2-circle"></i>
+                                    {% else %}
+                                        <i class="bi bi-x-circle"></i>
+                                    {% endif %}
+                                    {{ order.status }}
+                                </span>
+                            </td>
+                            <td class="text-end">
+                                <a href="{{ url_for('order_details', order_id=order.id) }}" class="btn btn-outline-primary btn-sm">
+                                    <i class="bi bi-eye"></i> Track Order
+                                </a>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        {% else %}
+        <div class="dashboard-card text-center py-5">
+            <div class="empty-state-icon">
+                <i class="bi bi-bag-x"></i>
+            </div>
+            <h4 class="empty-state-title">No orders placed yet</h4>
+            <p class="empty-state-desc">Explore local farms nearby and order fresh, organic produce delivered straight to your door.</p>
+            <a href="{{ url_for('home') }}" class="btn btn-primary px-4">
+                <i class="bi bi-shop me-1"></i> Explore Nearby Farms
+            </a>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

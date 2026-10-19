@@ -1,0 +1,152 @@
+{% extends "base.html" %}
+
+{% block title %}Edit Produce - {{ item.name }}{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-7">
+        <div class="dashboard-card shadow-sm">
+            <div class="d-flex align-items-center gap-3 mb-4 border-bottom pb-3">
+                <div class="farm-avatar" style="width: 48px; height: 48px; font-size: 1.5rem;">
+                    <i class="bi bi-pencil-square"></i>
+                </div>
+                <div>
+                    <h3 class="fw-bold mb-0 text-dark">Edit Produce Item</h3>
+                    <p class="text-muted small mb-0">{{ item.name }}</p>
+                </div>
+            </div>
+            
+            <form method="POST">
+                <div class="row g-3 mb-3">
+                    <div class="col-md-7">
+                        <label for="name" class="form-label">Item Name</label>
+                        <input type="text" class="form-control" id="name" name="name" value="{{ item.name }}" required>
+                    </div>
+                    <div class="col-md-5">
+                        <label for="category" class="form-label">Category</label>
+                        <select class="form-select" id="category" name="category">
+                            {% set cur_cat = item.category or 'Other' %}
+                            <option value="Vegetables" {% if cur_cat == 'Vegetables' %}selected{% endif %}>Vegetables</option>
+                            <option value="Fruits" {% if cur_cat == 'Fruits' %}selected{% endif %}>Fruits</option>
+                            <option value="Dairy" {% if cur_cat == 'Dairy' %}selected{% endif %}>Dairy</option>
+                            <option value="Grains" {% if cur_cat == 'Grains' %}selected{% endif %}>Grains</option>
+                            <option value="Herbs" {% if cur_cat == 'Herbs' %}selected{% endif %}>Herbs</option>
+                            <option value="Other" {% if cur_cat == 'Other' %}selected{% endif %}>Other</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="mb-3">
+                    <label for="description" class="form-label">Description</label>
+                    <textarea class="form-control" id="description" name="description" rows="2">{{ item.description }}</textarea>
+                </div>
+
+                <!-- Image URL & Live Preview -->
+                <div class="row g-3 mb-3">
+                    <div class="col-md-9">
+                        <label for="image_url" class="form-label d-flex justify-content-between align-items-center">
+                            <span>Image URL</span>
+                            <span class="text-muted small" style="font-size:0.75rem;">Clear photo makes it easier to sell</span>
+                        </label>
+                        <div class="input-group">
+                            <span class="input-group-text bg-white border-end-0 text-muted"><i class="bi bi-image"></i></span>
+                            <input type="url" class="form-control border-start-0 ps-0" id="image_url" name="image_url" value="{{ item.image_url if item.image_url else '' }}" placeholder="https://images.unsplash.com/... or paste image URL">
+                        </div>
+                        <div class="mt-1 d-flex flex-wrap gap-1 align-items-center">
+                            <small class="text-muted" style="font-size:0.75rem;">Sample photos:</small>
+                            <button type="button" class="btn btn-light btn-sm py-0 px-1 border chip-img-sample" data-url="https://images.unsplash.com/photo-1592924357228-91a4daadcfea?w=500" data-cat="Vegetables" style="font-size:0.75rem;">🍅 Tomatoes</button>
+                            <button type="button" class="btn btn-light btn-sm py-0 px-1 border chip-img-sample" data-url="https://images.unsplash.com/photo-1560806887-1e4cd0b6cbd6?w=500" data-cat="Fruits" style="font-size:0.75rem;">🍎 Apples</button>
+                            <button type="button" class="btn btn-light btn-sm py-0 px-1 border chip-img-sample" data-url="https://images.unsplash.com/photo-1576045057995-568f588f82fb?w=500" data-cat="Vegetables" style="font-size:0.75rem;">🥬 Spinach</button>
+                            <button type="button" class="btn btn-light btn-sm py-0 px-1 border chip-img-sample" data-url="https://images.unsplash.com/photo-1598170845058-32b9d6a5c317?w=500" data-cat="Vegetables" style="font-size:0.75rem;">🥕 Carrots</button>
+                            <button type="button" class="btn btn-light btn-sm py-0 px-1 border chip-img-sample" data-url="https://images.unsplash.com/photo-1587049352846-4a222e784d38?w=500" data-cat="Other" style="font-size:0.75rem;">🍯 Honey</button>
+                            <button type="button" class="btn btn-light btn-sm py-0 px-1 border chip-img-sample" data-url="https://images.unsplash.com/photo-1582722872445-44dc5f7e3c8f?w=500" data-cat="Dairy" style="font-size:0.75rem;">🥚 Eggs</button>
+                        </div>
+                    </div>
+                    <div class="col-md-3 d-flex flex-column align-items-center justify-content-center">
+                        <label class="form-label small text-muted mb-1">Preview</label>
+                        <div id="img-preview-box" class="border rounded-3 d-flex align-items-center justify-content-center bg-light" style="width: 72px; height: 72px; overflow: hidden;">
+                            <i class="bi bi-image text-muted fs-3" id="img-preview-icon"></i>
+                            <img id="img-preview-tag" src="{{ item.image_url if item.image_url else '' }}" alt="Preview" class="{% if not item.image_url %}d-none{% endif %} w-100 h-100" style="object-fit: cover;">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="row g-3 mb-4">
+                    <div class="col-md-4">
+                        <label for="price" class="form-label">Price ($)</label>
+                        <div class="input-group">
+                            <span class="input-group-text bg-white text-muted">$</span>
+                            <input type="number" step="0.01" class="form-control ps-0 border-start-0" id="price" name="price" value="{{ item.price }}" required min="0.01">
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <label for="unit" class="form-label">Unit of Measure</label>
+                        <input type="text" class="form-control" id="unit" name="unit" value="{{ item.unit }}" required placeholder="e.g., per kg, per bunch">
+                    </div>
+                    <div class="col-md-4">
+                        <label for="stock" class="form-label">Available Stock</label>
+                        <input type="number" class="form-control" id="stock" name="stock" value="{{ item.stock if item.stock is not none else 20 }}" min="0" placeholder="e.g., 20">
+                    </div>
+                </div>
+
+                <div class="d-flex gap-2">
+                    <button type="submit" class="btn btn-primary flex-grow-1">
+                        <i class="bi bi-check2"></i> Save Changes
+                    </button>
+                    <a href="{{ url_for('manage_produce') }}" class="btn btn-secondary px-4">
+                        Cancel
+                    </a>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function() {
+    'use strict';
+    const imgInput = document.getElementById('image_url');
+    const previewIcon = document.getElementById('img-preview-icon');
+    const previewTag = document.getElementById('img-preview-tag');
+    const categorySelect = document.getElementById('category');
+
+    function updatePreview() {
+        const url = imgInput.value.trim();
+        if (url) {
+            previewTag.src = url;
+            previewTag.onload = () => {
+                previewTag.classList.remove('d-none');
+                previewIcon.classList.add('d-none');
+            };
+            previewTag.onerror = () => {
+                previewTag.classList.add('d-none');
+                previewIcon.classList.remove('d-none');
+            };
+        } else {
+            previewTag.classList.add('d-none');
+            previewIcon.classList.remove('d-none');
+        }
+    }
+
+    // Initial check on load
+    if (imgInput.value.trim()) {
+        updatePreview();
+    }
+
+    imgInput.addEventListener('input', updatePreview);
+    imgInput.addEventListener('change', updatePreview);
+
+    document.querySelectorAll('.chip-img-sample').forEach(btn => {
+        btn.addEventListener('click', () => {
+            imgInput.value = btn.dataset.url;
+            if (btn.dataset.cat && categorySelect) {
+                categorySelect.value = btn.dataset.cat;
+            }
+            updatePreview();
+        });
+    });
+})();
+</script>
+{% endblock %}

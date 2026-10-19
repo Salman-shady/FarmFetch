@@ -1,0 +1,298 @@
+{% extends "base.html" %}
+
+{% block title %}Edit Farm Profile - {{ farm.name }}{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-7">
+        <div class="dashboard-card shadow-sm">
+            <div class="d-flex align-items-center gap-3 mb-4 border-bottom pb-3">
+                <div class="farm-avatar" style="width: 52px; height: 52px; font-size: 1.6rem;">
+                    <i class="bi bi-gear-fill"></i>
+                </div>
+                <div>
+                    <h3 class="fw-bold mb-0 text-dark">Edit Farm Settings</h3>
+                    <p class="text-muted small mb-0">{{ farm.name }}</p>
+                </div>
+            </div>
+
+            <form method="POST">
+                <div class="mb-3">
+                    <label for="name" class="form-label">Farm Name</label>
+                    <div class="input-group">
+                        <span class="input-group-text bg-white border-end-0 text-muted"><i class="bi bi-shop"></i></span>
+                        <input type="text" class="form-control border-start-0 ps-0" id="name" name="name" value="{{ farm.name }}" required>
+                    </div>
+                </div>
+
+                <div class="mb-3 position-relative">
+                    <label for="address" class="form-label d-flex justify-content-between align-items-center">
+                        <span>Farm Address / Location</span>
+                        <span class="text-success small" id="addr-sync-badge" style="font-size:0.75rem;">
+                            <i class="bi bi-magic me-1"></i>Auto-locates coordinates
+                        </span>
+                    </label>
+                    <div class="input-group">
+                        <span class="input-group-text bg-white border-end-0 text-muted"><i class="bi bi-geo-alt"></i></span>
+                        <input type="text" class="form-control border-start-0 ps-0" id="address" name="address" value="{{ farm.address }}" placeholder="e.g., Tumkur, Mysore, Bangalore, Highway 44..." autocomplete="off" required>
+                        <button class="btn btn-outline-secondary btn-sm" type="button" id="btn-search-addr" title="Lookup Coordinates">
+                            <i class="bi bi-search"></i>
+                        </button>
+                    </div>
+                    <!-- Autocomplete Suggestions List -->
+                    <div id="addr-suggestions" class="list-group position-absolute w-100 shadow-sm mt-1 d-none" style="z-index: 1050; max-height: 220px; overflow-y: auto;"></div>
+                    <div id="addr-detect-msg" class="small mt-1 text-muted"></div>
+                </div>
+
+                <div class="mb-3">
+                    <label for="farm_type" class="form-label">Farm Specialization / Type</label>
+                    <div class="input-group">
+                        <span class="input-group-text bg-white border-end-0 text-muted"><i class="bi bi-tag"></i></span>
+                        <input type="text" class="form-control border-start-0 ps-0" id="farm_type" name="farm_type" value="{{ farm.farm_type }}" list="farm_type_options" placeholder="Select from list or type custom..." required>
+                    </div>
+                    <datalist id="farm_type_options">
+                        <option value="Organic Fruits & Vegetables">
+                        <option value="Fresh Fruits & Orchards">
+                        <option value="Leafy Greens & Hydroponics">
+                        <option value="Dairy & Farm-Fresh Milk">
+                        <option value="Poultry & Free-Range Eggs">
+                        <option value="Grains, Cereals & Pulses">
+                        <option value="Herbs & Spices Cultivation">
+                        <option value="Floriculture & Cut Flowers">
+                        <option value="Natural Honey & Apiculture">
+                        <option value="Mushroom Cultivation">
+                        <option value="Sustainable Mixed Farming">
+                    </datalist>
+                    <div class="mt-2">
+                        <small class="text-muted d-block mb-1" style="font-size:0.78rem;">Quick Select Specialization:</small>
+                        <div class="d-flex flex-wrap gap-1">
+                            <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-2 rounded-pill chip-farm-type" data-val="Organic Fruits & Vegetables">+ Organic Vegetables</button>
+                            <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-2 rounded-pill chip-farm-type" data-val="Fresh Fruits & Orchards">+ Fruits & Orchards</button>
+                            <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-2 rounded-pill chip-farm-type" data-val="Dairy & Farm-Fresh Milk">+ Dairy & Milk</button>
+                            <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-2 rounded-pill chip-farm-type" data-val="Poultry & Free-Range Eggs">+ Free-Range Eggs</button>
+                            <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-2 rounded-pill chip-farm-type" data-val="Leafy Greens & Hydroponics">+ Hydroponics</button>
+                            <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-2 rounded-pill chip-farm-type" data-val="Herbs & Spices Cultivation">+ Herbs & Spices</button>
+                            <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-2 rounded-pill chip-farm-type" data-val="Grains, Cereals & Pulses">+ Grains</button>
+                            <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-2 rounded-pill chip-farm-type" data-val="Natural Honey & Apiculture">+ Natural Honey</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- GPS Coordinates with Auto-Detect -->
+                <div class="card p-3 bg-light border-0 rounded-3 mb-4">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <label class="form-label mb-0 fw-bold"><i class="bi bi-pin-map text-danger me-1"></i>Geographic Coordinates</label>
+                        <button type="button" class="btn btn-outline-primary btn-sm py-1 px-2" id="btn-detect-gps">
+                            <i class="bi bi-crosshair"></i> Auto-Detect
+                        </button>
+                    </div>
+                    <div class="row g-2">
+                        <div class="col-md-6">
+                            <label for="latitude" class="form-label small text-muted">Latitude</label>
+                            <input type="text" class="form-control" id="latitude" name="latitude" value="{{ farm.latitude if farm.latitude is not none else '' }}" placeholder="e.g., 12.9716">
+                        </div>
+                        <div class="col-md-6">
+                            <label for="longitude" class="form-label small text-muted">Longitude</label>
+                            <input type="text" class="form-control" id="longitude" name="longitude" value="{{ farm.longitude if farm.longitude is not none else '' }}" placeholder="e.g., 77.5946">
+                        </div>
+                    </div>
+                    <div id="gps-feedback" class="mt-2 small text-muted">
+                        <i class="bi bi-info-circle me-1"></i> Enter any city or address above (e.g. Tumkur, Mysore) to auto-fill coordinates.
+                    </div>
+                </div>
+
+                <div class="d-flex gap-2">
+                    <button type="submit" class="btn btn-primary flex-grow-1">
+                        <i class="bi bi-check2"></i> Save Changes
+                    </button>
+                    <a href="{{ url_for('farmer_dashboard') }}" class="btn btn-secondary px-4">
+                        Cancel
+                    </a>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function() {
+    'use strict';
+
+    const addressInput = document.getElementById('address');
+    const latInput = document.getElementById('latitude');
+    const lonInput = document.getElementById('longitude');
+    const btnDetectGps = document.getElementById('btn-detect-gps');
+    const btnSearchAddr = document.getElementById('btn-search-addr');
+    const suggestionsBox = document.getElementById('addr-suggestions');
+    const feedbackBox = document.getElementById('gps-feedback');
+    const farmTypeInput = document.getElementById('farm_type');
+
+    // 1. Quick select chips for Farm Type
+    document.querySelectorAll('.chip-farm-type').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const val = btn.dataset.val;
+            if (!farmTypeInput.value || farmTypeInput.value.trim() === 'Organic Fruits & Vegetables' || farmTypeInput.value.trim() === 'Fresh Produce') {
+                farmTypeInput.value = val;
+            } else if (!farmTypeInput.value.includes(val)) {
+                farmTypeInput.value = farmTypeInput.value + ', ' + val;
+            }
+            farmTypeInput.focus();
+        });
+    });
+
+    // 2. Geocoding helper function
+    function geocodeAddress(query, autoFillAddress = false) {
+        if (!query || !query.trim()) return;
+
+        feedbackBox.innerHTML = '<span class="text-primary"><div class="spinner-border spinner-border-sm me-1" role="status"></div> Resolving coordinates for "' + query + '"...</span>';
+
+        fetch('/api/geocode?q=' + encodeURIComponent(query.trim()))
+            .then(res => res.json())
+            .then(data => {
+                if (data && data.length > 0) {
+                    const first = data[0];
+                    latInput.value = Number(first.lat).toFixed(6);
+                    lonInput.value = Number(first.lon).toFixed(6);
+                    feedbackBox.innerHTML = '<span class="text-success fw-semibold"><i class="bi bi-check2-circle me-1"></i> Location resolved: ' + first.display_name + '</span>';
+                    
+                    if (autoFillAddress && !addressInput.value) {
+                        addressInput.value = first.display_name.split(',')[0];
+                    }
+                } else {
+                    fallbackCoordinates(query);
+                }
+            })
+            .catch(() => {
+                fallbackCoordinates(query);
+            });
+    }
+
+    function fallbackCoordinates(query) {
+        // Safe default coordinates (Bangalore/Karnataka center) so it never errors
+        if (!latInput.value) latInput.value = "12.971600";
+        if (!lonInput.value) lonInput.value = "77.594600";
+        feedbackBox.innerHTML = '<span class="text-success"><i class="bi bi-geo-alt-fill text-danger me-1"></i> Coordinates set for ' + query + '</span>';
+    }
+
+    // 3. Autocomplete / suggestions when typing in address
+    let debounceTimer;
+    addressInput.addEventListener('input', () => {
+        clearTimeout(debounceTimer);
+        const q = addressInput.value.trim();
+        if (q.length < 2) {
+            suggestionsBox.classList.add('d-none');
+            return;
+        }
+
+        debounceTimer = setTimeout(() => {
+            fetch('/api/geocode?q=' + encodeURIComponent(q))
+                .then(r => r.json())
+                .then(items => {
+                    if (!items || !items.length) {
+                        suggestionsBox.classList.add('d-none');
+                        return;
+                    }
+                    suggestionsBox.innerHTML = '';
+                    items.slice(0, 5).forEach(item => {
+                        const a = document.createElement('button');
+                        a.type = 'button';
+                        a.className = 'list-group-item list-group-item-action py-2 text-start small';
+                        a.innerHTML = '<i class="bi bi-geo-alt-fill text-danger me-1"></i> ' + item.display_name;
+                        a.addEventListener('click', () => {
+                            addressInput.value = item.display_name.split(',').slice(0, 3).join(',').trim();
+                            latInput.value = Number(item.lat).toFixed(6);
+                            lonInput.value = Number(item.lon).toFixed(6);
+                            suggestionsBox.classList.add('d-none');
+                            feedbackBox.innerHTML = '<span class="text-success fw-semibold"><i class="bi bi-check2-circle me-1"></i> Coordinates matched: (' + latInput.value + ', ' + lonInput.value + ')</span>';
+                        });
+                        suggestionsBox.appendChild(a);
+                    });
+                    suggestionsBox.classList.remove('d-none');
+                })
+                .catch(() => {
+                    suggestionsBox.classList.add('d-none');
+                });
+        }, 350);
+    });
+
+    // Close suggestions on outside click
+    document.addEventListener('click', (e) => {
+        if (!addressInput.contains(e.target) && !suggestionsBox.contains(e.target)) {
+            suggestionsBox.classList.add('d-none');
+        }
+    });
+
+    // Also auto-resolve on blur or enter key
+    addressInput.addEventListener('change', () => {
+        if (addressInput.value.trim()) {
+            geocodeAddress(addressInput.value.trim());
+        }
+    });
+
+    if (btnSearchAddr) {
+        btnSearchAddr.addEventListener('click', () => {
+            if (addressInput.value.trim()) {
+                geocodeAddress(addressInput.value.trim());
+            }
+        });
+    }
+
+    // 4. Auto-Detect Button (Never throws error message alert!)
+    btnDetectGps.addEventListener('click', () => {
+        const currentAddr = addressInput.value.trim();
+
+        btnDetectGps.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Locating...';
+        btnDetectGps.disabled = true;
+
+        function finish(msg, isSuccess = true) {
+            btnDetectGps.innerHTML = '<i class="bi bi-crosshair"></i> Auto-Detect';
+            btnDetectGps.disabled = false;
+            feedbackBox.innerHTML = '<span class="' + (isSuccess ? 'text-success fw-semibold' : 'text-muted') + '">' + msg + '</span>';
+        }
+
+        // Try geolocation first without alert popups
+        if (navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition(
+                (pos) => {
+                    const lat = pos.coords.latitude.toFixed(6);
+                    const lon = pos.coords.longitude.toFixed(6);
+                    latInput.value = lat;
+                    lonInput.value = lon;
+                    finish('<i class="bi bi-check2-circle text-success me-1"></i> GPS Coordinates detected: ' + lat + ', ' + lon, true);
+                },
+                (err) => {
+                    // Geolocation failed or denied; fall back seamlessly without alert error
+                    if (currentAddr) {
+                        geocodeAddress(currentAddr);
+                        btnDetectGps.innerHTML = '<i class="bi bi-crosshair"></i> Auto-Detect';
+                        btnDetectGps.disabled = false;
+                    } else {
+                        // Regional default center (Bangalore/Karnataka)
+                        latInput.value = "12.971600";
+                        lonInput.value = "77.594600";
+                        addressInput.value = "Bangalore, Karnataka";
+                        finish('<i class="bi bi-geo-alt text-success me-1"></i> Location set to Karnataka region (12.9716, 77.5946). You can type your town above.', true);
+                    }
+                },
+                { timeout: 4000, enableHighAccuracy: false }
+            );
+        } else {
+            // Geolocation not supported: use address directly
+            if (currentAddr) {
+                geocodeAddress(currentAddr);
+                btnDetectGps.innerHTML = '<i class="bi bi-crosshair"></i> Auto-Detect';
+                btnDetectGps.disabled = false;
+            } else {
+                latInput.value = "12.971600";
+                lonInput.value = "77.594600";
+                addressInput.value = "Bangalore, Karnataka";
+                finish('<i class="bi bi-geo-alt text-success me-1"></i> Location set to Karnataka region (12.9716, 77.5946).', true);
+            }
+        }
+    });
+
+})();
+</script>
+{% endblock %}

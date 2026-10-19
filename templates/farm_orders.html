@@ -1,0 +1,156 @@
+{% extends "base.html" %}
+
+{% block title %}Incoming Orders - {{ current_user.farm.name }}{% endblock %}
+
+{% block content %}
+<div class="row g-4">
+    <!-- Header -->
+    <div class="col-12">
+        <div class="d-flex flex-wrap justify-content-between align-items-center gap-3">
+            <div>
+                <h2 class="fw-bold mb-1"><i class="bi bi-receipt text-success me-2"></i>Manage Incoming Orders</h2>
+                <p class="text-muted small mb-0">Review, prepare, and mark fresh produce orders ready for driver pickup in real-time.</p>
+            </div>
+            <div class="d-flex gap-2">
+                <a href="{{ url_for('farmer_dashboard') }}" class="btn btn-outline-primary btn-sm">
+                    <i class="bi bi-grid-1x2"></i> Dashboard Overview
+                </a>
+                <a href="{{ url_for('manage_produce') }}" class="btn btn-secondary btn-sm">
+                    <i class="bi bi-basket2"></i> Manage Produce
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Real-Time Incoming Order Banner -->
+    <div class="col-12 d-none" id="realtime-alert-banner">
+        <div class="alert alert-success d-flex justify-content-between align-items-center shadow-sm border-0 rounded-3 mb-0">
+            <div class="d-flex align-items-center gap-2">
+                <i class="bi bi-bell-fill text-success fs-5"></i>
+                <span id="realtime-alert-text"><strong>New order received!</strong></span>
+            </div>
+            <button class="btn btn-sm btn-success" onclick="window.location.reload();">
+                <i class="bi bi-arrow-clockwise"></i> Refresh Orders
+            </button>
+        </div>
+    </div>
+
+    <!-- Orders Table Card -->
+    <div class="col-12">
+        {% if orders %}
+        <div class="dashboard-card shadow-sm p-0 overflow-hidden">
+            <div class="table-responsive">
+                <table class="table table-custom align-middle mb-0">
+                    <thead>
+                        <tr>
+                            <th>Order ID</th>
+                            <th>Customer & Address</th>
+                            <th>Phone Contact</th>
+                            <th>Items & Total</th>
+                            <th>Current Status</th>
+                            <th class="text-end">Status Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for order in orders %}
+                        <tr>
+                            <td>
+                                <a href="{{ url_for('order_details', order_id=order.id) }}" class="fw-bold text-success fs-6">
+                                    #{{ order.id }}
+                                </a>
+                                <small class="text-muted d-block">
+                                    {{ order.created_at.strftime('%b %d, %I:%M %p') if order.created_at and order.created_at.strftime else 'Recently' }}
+                                </small>
+                            </td>
+                            <td>
+                                <div class="fw-semibold text-dark">{{ order.customer_name }}</div>
+                                <small class="text-muted"><i class="bi bi-geo-alt me-1"></i>{{ order.customer_address }}</small>
+                            </td>
+                            <td>
+                                <span class="text-muted small"><i class="bi bi-telephone me-1"></i>{{ order.customer_phone }}</span>
+                            </td>
+                            <td>
+                                <div class="fw-bold text-dark">${{ "%.2f"|format(order.total_price) }}</div>
+                                <small class="text-muted">{{ order.items | length }} items</small>
+                            </td>
+                            <td>
+                                <span class="status-pill status-{{ order.status | replace(' ', '-') }}">
+                                    {{ order.status }}
+                                </span>
+                            </td>
+                            <td class="text-end">
+                                <div class="d-inline-flex gap-1 align-items-center">
+                                    {% if order.status == 'Placed' %}
+                                    <form action="{{ url_for('update_order_status', order_id=order.id) }}" method="POST" class="d-inline">
+                                        <input type="hidden" name="status" value="Preparing">
+                                        <button type="submit" class="btn btn-success btn-sm">
+                                            <i class="bi bi-check2"></i> Confirm & Prepare
+                                        </button>
+                                    </form>
+                                    <form action="{{ url_for('update_order_status', order_id=order.id) }}" method="POST" class="d-inline" onsubmit="return confirm('Reject this order?');">
+                                        <input type="hidden" name="status" value="Rejected">
+                                        <button type="submit" class="btn btn-outline-danger btn-sm">
+                                            <i class="bi bi-x-lg"></i> Reject
+                                        </button>
+                                    </form>
+                                    {% elif order.status == 'Preparing' %}
+                                    <form action="{{ url_for('update_order_status', order_id=order.id) }}" method="POST" class="d-inline">
+                                        <input type="hidden" name="status" value="Ready for Pickup">
+                                        <button type="submit" class="btn btn-primary btn-sm">
+                                            <i class="bi bi-box-seam me-1"></i> Ready for Pickup
+                                        </button>
+                                    </form>
+                                    {% endif %}
+                                    
+                                    <a href="{{ url_for('order_details', order_id=order.id) }}" class="btn btn-secondary btn-sm" title="View Order & Chat">
+                                        <i class="bi bi-eye"></i>
+                                    </a>
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        {% else %}
+        <div class="dashboard-card text-center py-5">
+            <div class="empty-state-icon">
+                <i class="bi bi-inbox"></i>
+            </div>
+            <h4 class="empty-state-title">No incoming orders yet</h4>
+            <p class="empty-state-desc">When local customers place orders for your farm produce, they will instantly appear here with live notifications!</p>
+            <a href="{{ url_for('manage_produce') }}" class="btn btn-primary px-4">
+                <i class="bi bi-plus-circle me-1"></i> Add Fresh Produce
+            </a>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.5/socket.io.min.js"></script>
+    
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            var socket = io();
+
+            socket.on('connect', () => {
+                socket.emit('join_farm_room', { 
+                    farm_id: '{{ current_user.farm.id }}' 
+                });
+            });
+
+            socket.on('new_order', (data) => {
+                console.log('New order received:', data);
+                const banner = document.getElementById('realtime-alert-banner');
+                const text = document.getElementById('realtime-alert-text');
+                if (banner && text) {
+                    text.innerHTML = `<strong>New Order #${data.order_id} received from ${data.customer_name} ($${Number(data.total).toFixed(2)})!</strong>`;
+                    banner.classList.remove('d-none');
+                }
+            });
+        });
+    </script>
+{% endblock %}

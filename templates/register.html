@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+
+{% block title %}Register - FarmFetch{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center my-4">
+    <div class="col-md-6 col-lg-5">
+        <div class="auth-form-card">
+            <div class="text-center mb-4">
+                <div class="brand-icon-badge mx-auto mb-3" style="width: 52px; height: 52px; font-size: 1.6rem;">
+                    <i class="bi bi-person-plus"></i>
+                </div>
+                <h2 class="fw-bold text-dark mb-1">Create an Account</h2>
+                <p class="text-muted small mb-0">Join the hyperlocal farm-to-table network today.</p>
+            </div>
+
+            <form method="POST">
+                <div class="mb-3">
+                    <label for="email" class="form-label">Email Address</label>
+                    <div class="input-group">
+                        <span class="input-group-text bg-white border-end-0 text-muted"><i class="bi bi-envelope"></i></span>
+                        <input type="email" class="form-control border-start-0 ps-0" id="email" name="email" placeholder="name@example.com" required>
+                    </div>
+                </div>
+
+                <div class="mb-3">
+                    <label for="password" class="form-label">Password</label>
+                    <div class="input-group">
+                        <span class="input-group-text bg-white border-end-0 text-muted"><i class="bi bi-lock"></i></span>
+                        <input type="password" class="form-control border-start-0 ps-0" id="password" name="password" placeholder="Create a secure password" required minlength="4">
+                    </div>
+                </div>
+
+                <div class="mb-4">
+                    <label for="role" class="form-label">I want to participate as:</label>
+                    <div class="input-group">
+                        <span class="input-group-text bg-white border-end-0 text-muted"><i class="bi bi-person-gear"></i></span>
+                        <select class="form-select border-start-0 ps-0" id="role" name="role" required>
+                            <option value="customer" selected>Customer (Buy fresh farm produce)</option>
+                            <option value="farmer">Farmer (Sell crops & manage farm)</option>
+                            <option value="driver">Delivery Driver (Pick up & deliver orders)</option>
+                        </select>
+                    </div>
+                    <small class="text-muted mt-1 d-block">
+                        Choose your primary role. You can create different accounts if needed.
+                    </small>
+                </div>
+
+                <button type="submit" class="btn btn-primary w-100 py-2 fw-bold fs-6 mb-3">
+                    <i class="bi bi-person-check-fill me-1"></i> Register Account
+                </button>
+            </form>
+
+            <div class="text-center border-top pt-3 mt-2">
+                <p class="text-muted small mb-0">
+                    Already registered? 
+                    <a href="{{ url_for('login') }}" class="fw-bold text-success">Sign in here</a>
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

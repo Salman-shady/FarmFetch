@@ -1,0 +1,490 @@
+{% extends "base.html" %}
+{% block title %}My Dashboard - FarmFetch{% endblock %}
+
+{% block head_extra %}
+<style>
+.cd-search-bar { background:#fff; border:1.5px solid var(--border-light); border-radius:var(--radius-lg); padding:.6rem 1rem; display:flex; align-items:center; gap:.75rem; box-shadow:var(--shadow-xs); transition:box-shadow var(--transition-fast); }
+.cd-search-bar:focus-within { border-color:var(--primary-main); box-shadow:0 0 0 3px rgba(45,106,79,.12); }
+.cd-search-bar input { border:none; outline:none; flex:1; font-size:.95rem; background:transparent; color:var(--text-heading); }
+.cd-search-bar input::placeholder { color:var(--text-subtle); }
+.cat-pill { display:inline-flex; align-items:center; gap:.35rem; padding:.35rem .85rem; border-radius:var(--radius-pill); border:1.5px solid var(--border-light); background:#fff; font-size:.82rem; font-weight:600; color:var(--text-body); cursor:pointer; transition:all var(--transition-fast); white-space:nowrap; }
+.cat-pill:hover, .cat-pill.active { background:var(--primary-main); border-color:var(--primary-main); color:#fff; }
+.product-card { background:#fff; border:1px solid var(--border-light); border-radius:var(--radius-lg); overflow:hidden; transition:all var(--transition-base); display:flex; flex-direction:column; height:100%; }
+.product-card:hover { transform:translateY(-4px); box-shadow:var(--shadow-md); border-color:var(--accent-sage); }
+.product-card-img { width:100%; height:110px; background:linear-gradient(135deg,var(--accent-mint),var(--accent-mint-subtle)); display:flex; align-items:center; justify-content:center; font-size:3rem; }
+.product-card-body { padding:1rem; flex:1; display:flex; flex-direction:column; }
+.product-price { font-size:1.2rem; font-weight:800; color:var(--primary-forest); }
+.product-unit { font-size:.82rem; color:var(--text-muted); font-weight:500; }
+.stock-badge-avail { background:#d1fae5; color:#065f46; font-size:.74rem; font-weight:700; border-radius:var(--radius-pill); padding:.15rem .55rem; }
+.stock-badge-low { background:#fef3c7; color:#92400e; font-size:.74rem; font-weight:700; border-radius:var(--radius-pill); padding:.15rem .55rem; }
+.cart-summary-bar { background:linear-gradient(90deg,#d8f3dc,#f0fdf4); border:1px solid var(--accent-mint); border-radius:var(--radius-lg); padding:.9rem 1.25rem; display:flex; align-items:center; justify-content:space-between; gap:1rem; flex-wrap:wrap; }
+.active-order-card { border:1px solid var(--border-light); border-radius:var(--radius-lg); padding:1.1rem 1.25rem; background:#fff; display:flex; flex-direction:column; gap:.6rem; transition:all var(--transition-fast); position:relative; overflow:hidden; }
+.active-order-card::before { content:''; position:absolute; left:0; top:0; bottom:0; width:4px; border-radius:4px 0 0 4px; }
+.active-order-card.s-Placed::before { background:#0284c7; }
+.active-order-card.s-Preparing::before { background:#d97706; }
+.active-order-card.s-Ready-for-Pickup::before { background:#16a34a; }
+.active-order-card.s-Picked-Up::before { background:#9333ea; }
+.active-order-card:hover { box-shadow:var(--shadow-md); transform:translateY(-2px); }
+.order-timeline-mini { display:flex; gap:.35rem; align-items:center; font-size:.78rem; font-weight:600; color:var(--text-muted); margin-top:.3rem; }
+.order-timeline-mini .step-dot { width:8px; height:8px; border-radius:50%; background:var(--border-subtle); flex-shrink:0; }
+.order-timeline-mini .step-dot.done { background:var(--primary-main); }
+.order-timeline-mini .step-dot.step-active { background:#f59e0b; box-shadow:0 0 0 3px rgba(245,158,11,.25); }
+.section-hdr { display:flex; justify-content:space-between; align-items:center; margin-bottom:1.25rem; }
+.section-hdr h5 { font-weight:700; margin-bottom:0; font-size:1.05rem; display:flex; align-items:center; gap:.5rem; }
+.welcome-hero { background:linear-gradient(135deg,var(--primary-forest),var(--primary-main) 60%,var(--primary-accent)); border-radius:var(--radius-xl); padding:1.75rem 2rem; color:#fff; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:1rem; box-shadow:var(--shadow-md); margin-bottom:1.75rem; }
+.welcome-hero h3 { color:#fff; font-weight:800; margin-bottom:.25rem; }
+.welcome-hero p { color:rgba(255,255,255,.85); margin-bottom:0; font-size:.95rem; }
+.wishlist-placeholder { border:2px dashed var(--border-subtle); background:var(--surface-alt); border-radius:var(--radius-lg); padding:2rem 1.5rem; text-align:center; color:var(--text-muted); }
+.skeleton { background:linear-gradient(90deg,#f0f0f0 25%,#e0e0e0 50%,#f0f0f0 75%); background-size:200% 100%; animation:skel-shimmer 1.4s infinite; border-radius:var(--radius-sm); }
+@keyframes skel-shimmer { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
+.skel-card { height:200px; border-radius:var(--radius-lg); }
+.skel-farm { height:140px; border-radius:var(--radius-lg); }
+.sort-select { border:1.5px solid var(--border-light); border-radius:var(--radius-md); padding:.4rem .75rem; font-size:.87rem; font-weight:600; background:#fff; color:var(--text-body); outline:none; cursor:pointer; }
+.sort-select:focus { border-color:var(--primary-main); }
+.pulse-live { width:9px; height:9px; border-radius:50%; background:#10b981; display:inline-block; animation:pulseActive 1.8s infinite; margin-right:.35rem; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="welcome-hero">
+  <div>
+    <p class="mb-1" style="font-size:.82rem;opacity:.8;text-transform:uppercase;letter-spacing:.05em;">
+      <i class="bi bi-person-circle me-1"></i> Customer Dashboard
+    </p>
+    <h3>Welcome back, {{ current_user.email.split('@')[0] | title }}!</h3>
+    <p>Fresh local produce is just a few clicks away.</p>
+  </div>
+  <div class="d-flex gap-2 flex-wrap">
+    {% if cart_count > 0 %}
+    <a href="{{ url_for('view_cart') }}" class="btn btn-warning fw-bold">
+      <i class="bi bi-cart3"></i> Cart ({{ cart_count }})
+    </a>
+    {% endif %}
+    <a href="{{ url_for('home') }}" class="btn" style="background:rgba(255,255,255,.18);color:#fff;border:1px solid rgba(255,255,255,.3);">
+      <i class="bi bi-shop"></i> Browse Farms
+    </a>
+  </div>
+</div>
+
+<div class="row g-4">
+  <div class="col-lg-3">
+    <div class="dash-sidebar">
+      <div class="dashboard-card mb-3 p-3">
+        <div class="d-flex align-items-center gap-3">
+          <div class="farm-avatar" style="width:48px;height:48px;font-size:1.5rem;background:var(--accent-mint);">
+            <i class="bi bi-person-fill"></i>
+          </div>
+          <div>
+            <div class="fw-bold text-dark" style="font-size:.95rem;">{{ current_user.email.split('@')[0] | title }}</div>
+            <div class="text-muted small">{{ current_user.email }}</div>
+            <span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill mt-1" style="font-size:.72rem;">Customer</span>
+          </div>
+        </div>
+        <div class="mt-3 pt-3 border-top">
+          <div class="row g-2">
+            <div class="col-6">
+              <div class="text-center p-2 rounded-3" style="background:var(--surface-alt);">
+                <div class="fw-bold text-dark">{{ all_orders|length }}</div>
+                <div class="text-muted" style="font-size:.72rem;">Total Orders</div>
+              </div>
+            </div>
+            <div class="col-6">
+              <div class="text-center p-2 rounded-3" style="background:var(--accent-mint-subtle);">
+                <div class="fw-bold text-success">${{ "%.0f"|format(total_spent) }}</div>
+                <div class="text-muted" style="font-size:.72rem;">Total Spent</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="dashboard-card p-2">
+        <nav class="nav flex-column nav-pills-dash" id="dash-nav">
+          <a class="nav-link active" href="#sect-overview"><i class="bi bi-grid-1x2"></i> Overview</a>
+          <a class="nav-link" href="#sect-products"><i class="bi bi-basket2 text-success"></i> Browse Products</a>
+          <a class="nav-link" href="#sect-active">
+            <i class="bi bi-clock-history" style="color:#d97706;"></i> Active Orders
+            {% if active_orders %}<span class="badge rounded-pill ms-auto" style="background:#fef3c7;color:#b45309;">{{ active_orders|length }}</span>{% endif %}
+          </a>
+          <a class="nav-link" href="#sect-history"><i class="bi bi-bag-check text-success"></i> Order History</a>
+          <a class="nav-link" href="#sect-farms"><i class="bi bi-shop"></i> Nearby Farms</a>
+          <a class="nav-link" href="#sect-wishlist"><i class="bi bi-heart"></i> Saved Items</a>
+          <hr class="my-2">
+          <a class="nav-link" href="{{ url_for('home') }}"><i class="bi bi-house"></i> Home Page</a>
+          <a class="nav-link" href="{{ url_for('logout') }}" style="color:#dc2626;"><i class="bi bi-box-arrow-right"></i> Log Out</a>
+        </nav>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-9">
+
+    <div id="sect-overview" class="mb-4">
+      <div class="row g-3 mb-4">
+        <div class="col-sm-6 col-xl-3">
+          <div class="stat-card">
+            <div class="stat-icon blue"><i class="bi bi-receipt"></i></div>
+            <div><div class="stat-value">{{ all_orders|length }}</div><div class="stat-label">Total Orders</div></div>
+          </div>
+        </div>
+        <div class="col-sm-6 col-xl-3">
+          <div class="stat-card">
+            <div class="stat-icon amber"><i class="bi bi-hourglass-split"></i></div>
+            <div><div class="stat-value">{{ active_orders|length }}</div><div class="stat-label">Active Orders</div></div>
+          </div>
+        </div>
+        <div class="col-sm-6 col-xl-3">
+          <div class="stat-card">
+            <div class="stat-icon green"><i class="bi bi-check2-circle"></i></div>
+            <div><div class="stat-value">{{ completed_orders|length }}</div><div class="stat-label">Delivered</div></div>
+          </div>
+        </div>
+        <div class="col-sm-6 col-xl-3">
+          <div class="stat-card">
+            <div class="stat-icon purple"><i class="bi bi-cash-stack"></i></div>
+            <div><div class="stat-value">${{ "%.0f"|format(total_spent) }}</div><div class="stat-label">Total Spent</div></div>
+          </div>
+        </div>
+      </div>
+      {% if cart_count > 0 %}
+      <div class="cart-summary-bar mb-3">
+        <div class="d-flex align-items-center gap-3">
+          <div class="farm-avatar" style="width:44px;height:44px;font-size:1.3rem;"><i class="bi bi-cart3"></i></div>
+          <div>
+            <div class="fw-bold text-dark">{{ cart_count }} item{{ 's' if cart_count != 1 else '' }} in your cart!</div>
+            <div class="text-muted small">Complete your order before items sell out.</div>
+          </div>
+        </div>
+        <div class="d-flex gap-2 flex-wrap">
+          <a href="{{ url_for('view_cart') }}" class="btn btn-outline-primary btn-sm">View Cart</a>
+          <a href="{{ url_for('checkout') }}" class="btn btn-primary btn-sm"><i class="bi bi-lightning-fill"></i> Checkout Now</a>
+        </div>
+      </div>
+      {% endif %}
+    </div>
+
+    <div id="sect-products" class="dashboard-card mb-4">
+      <div class="section-hdr mb-3">
+        <h5><i class="bi bi-basket2 text-success"></i> Browse Products</h5>
+        <a href="{{ url_for('home') }}" class="btn btn-outline-primary btn-sm"><i class="bi bi-map me-1"></i> Map View</a>
+      </div>
+      <div class="mb-3">
+        <div class="cd-search-bar mb-2">
+          <i class="bi bi-search text-muted"></i>
+          <input type="text" id="prod-search" placeholder="Search products, farms..." autocomplete="off">
+          <select class="sort-select" id="prod-sort">
+            <option value="name">A-Z</option>
+            <option value="price_asc">Price: Low-High</option>
+            <option value="price_desc">Price: High-Low</option>
+          </select>
+        </div>
+        <div class="d-flex gap-2 flex-wrap" id="cat-filters">
+          <button class="cat-pill active" data-cat="">All</button>
+          <button class="cat-pill" data-cat="Vegetables">Vegetables</button>
+          <button class="cat-pill" data-cat="Fruits">Fruits</button>
+          <button class="cat-pill" data-cat="Dairy">Dairy</button>
+          <button class="cat-pill" data-cat="Grains">Grains</button>
+          <button class="cat-pill" data-cat="Herbs">Herbs</button>
+          <button class="cat-pill" data-cat="Other">Other</button>
+        </div>
+      </div>
+      <div id="products-grid" class="row g-3">
+        <div class="col-md-6 col-lg-4 skel-col"><div class="skeleton skel-card"></div></div>
+        <div class="col-md-6 col-lg-4 skel-col"><div class="skeleton skel-card"></div></div>
+        <div class="col-md-6 col-lg-4 skel-col"><div class="skeleton skel-card"></div></div>
+      </div>
+      <div id="products-empty" class="text-center py-4 d-none">
+        <div class="empty-state-icon"><i class="bi bi-basket-x"></i></div>
+        <h6 class="fw-bold mt-2">No products found</h6>
+        <p class="text-muted small mb-2">Try adjusting your search or category filter.</p>
+        <button class="btn btn-outline-primary btn-sm" onclick="resetProductFilters()">Clear Filters</button>
+      </div>
+    </div>
+
+    <div id="sect-active" class="dashboard-card mb-4">
+      <div class="section-hdr">
+        <h5><span class="pulse-live"></span> Active Orders</h5>
+        <a href="{{ url_for('my_orders') }}" class="btn btn-outline-primary btn-sm">View All <i class="bi bi-arrow-right ms-1"></i></a>
+      </div>
+      {% if active_orders %}
+      <div class="row g-3">
+        {% for order in active_orders %}
+        {% set sc = order.status | replace(' ', '-') %}
+        <div class="col-md-6">
+          <div class="active-order-card s-{{ sc }}">
+            <div class="d-flex justify-content-between align-items-start">
+              <div>
+                <a href="{{ url_for('order_details', order_id=order.id) }}" class="fw-bold text-dark text-decoration-none fs-6">Order #{{ order.id }}</a>
+                <div class="text-muted small">{{ order.farm.name if order.farm else 'Local Farm' }}</div>
+                {% if order.created_at and order.created_at.strftime %}
+                <div class="text-muted" style="font-size:.75rem;">{{ order.created_at.strftime('%b %d, %I:%M %p') }}</div>
+                {% endif %}
+              </div>
+              <span class="status-pill status-{{ sc }}">
+                {% if order.status == 'Placed' %}<i class="bi bi-clock-history"></i>
+                {% elif order.status == 'Preparing' %}<i class="bi bi-gear-wide-connected"></i>
+                {% elif order.status == 'Ready for Pickup' %}<i class="bi bi-box-seam"></i>
+                {% elif order.status == 'Picked Up' %}<i class="bi bi-truck"></i>{% endif %}
+                {{ order.status }}
+              </span>
+            </div>
+            <div class="order-timeline-mini">
+              <span class="step-dot done"></span><span>-</span>
+              <span class="step-dot {{ 'done' if order.status in ['Preparing','Ready for Pickup','Picked Up'] else 'step-active' if order.status == 'Placed' else '' }}"></span><span>-</span>
+              <span class="step-dot {{ 'done' if order.status in ['Ready for Pickup','Picked Up'] else 'step-active' if order.status == 'Preparing' else '' }}"></span><span>-</span>
+              <span class="step-dot {{ 'done' if order.status == 'Picked Up' else 'step-active' if order.status == 'Ready for Pickup' else '' }}"></span>
+              <span class="ms-2">{{ order.status }}</span>
+            </div>
+            <div class="d-flex justify-content-between align-items-center">
+              <span class="fw-bold">${{ "%.2f"|format(order.total_price) }}</span>
+              <div class="d-flex gap-1">
+                {% if order.status == 'Picked Up' %}
+                <span class="badge" style="background:#f3e8ff;color:#7e22ce;font-size:.78rem;padding:.3rem .65rem;border-radius:999px;"><i class="bi bi-geo-alt-fill"></i> Live</span>
+                {% endif %}
+                <a href="{{ url_for('order_details', order_id=order.id) }}" class="btn btn-primary btn-sm">
+                  <i class="bi bi-eye me-1"></i> Track
+                </a>
+              </div>
+            </div>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <div class="text-center py-4">
+        <div class="empty-state-icon" style="width:60px;height:60px;font-size:1.6rem;"><i class="bi bi-clock"></i></div>
+        <p class="text-muted mb-3">No active orders right now.</p>
+        <a href="{{ url_for('home') }}" class="btn btn-primary btn-sm"><i class="bi bi-shop me-1"></i> Order from a Farm</a>
+      </div>
+      {% endif %}
+    </div>
+
+    <div id="sect-history" class="dashboard-card mb-4">
+      <div class="section-hdr">
+        <h5><i class="bi bi-bag-check text-success"></i> Recent Order History</h5>
+        <a href="{{ url_for('my_orders') }}" class="btn btn-outline-primary btn-sm">Full History <i class="bi bi-arrow-right ms-1"></i></a>
+      </div>
+      {% if recent_orders %}
+      <div class="table-responsive">
+        <table class="table table-custom align-middle mb-0">
+          <thead>
+            <tr><th>Order</th><th>Farm</th><th>Date</th><th>Total</th><th>Status</th><th class="text-end">Action</th></tr>
+          </thead>
+          <tbody>
+            {% for order in recent_orders %}
+            <tr>
+              <td><a href="{{ url_for('order_details', order_id=order.id) }}" class="fw-bold text-success">#{{ order.id }}</a></td>
+              <td><span class="fw-semibold">{{ order.farm.name if order.farm else 'Local Farm' }}</span></td>
+              <td><span class="text-muted small">{{ order.created_at.strftime('%b %d, %Y') if order.created_at and order.created_at.strftime else 'Recent' }}</span></td>
+              <td><span class="fw-bold">${{ "%.2f"|format(order.total_price) }}</span></td>
+              <td>
+                <span class="status-pill status-{{ order.status | replace(' ', '-') }}">
+                  {% if order.status == 'Delivered' %}<i class="bi bi-check2-circle"></i>
+                  {% elif order.status == 'Rejected' %}<i class="bi bi-x-circle"></i>
+                  {% else %}<i class="bi bi-clock-history"></i>{% endif %}
+                  {{ order.status }}
+                </span>
+              </td>
+              <td class="text-end"><a href="{{ url_for('order_details', order_id=order.id) }}" class="btn btn-outline-primary btn-sm"><i class="bi bi-eye"></i></a></td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <div class="text-center py-5">
+        <div class="empty-state-icon"><i class="bi bi-bag-x"></i></div>
+        <h5 class="empty-state-title">No orders yet</h5>
+        <p class="empty-state-desc">Discover local farms and place your first fresh produce order.</p>
+        <a href="{{ url_for('home') }}" class="btn btn-primary px-4"><i class="bi bi-shop me-1"></i> Explore Nearby Farms</a>
+      </div>
+      {% endif %}
+    </div>
+
+    <div id="sect-farms" class="dashboard-card mb-4">
+      <div class="section-hdr">
+        <h5><i class="bi bi-shop text-success"></i> Nearby Farms</h5>
+        <a href="{{ url_for('home') }}" class="btn btn-primary btn-sm"><i class="bi bi-map me-1"></i> Open Map View</a>
+      </div>
+      <div id="dash-farm-list" class="row g-3">
+        <div class="col-md-4 skel-col"><div class="skeleton skel-farm"></div></div>
+        <div class="col-md-4 skel-col"><div class="skeleton skel-farm"></div></div>
+        <div class="col-md-4 skel-col"><div class="skeleton skel-farm"></div></div>
+      </div>
+    </div>
+
+    <div id="sect-wishlist" class="mb-4">
+      <div class="section-hdr">
+        <h5><i class="bi bi-heart text-danger"></i> Saved Items</h5>
+      </div>
+      <div class="wishlist-placeholder">
+        <i class="bi bi-heart fs-1 mb-3 d-block" style="color:var(--border-subtle)"></i>
+        <h6 class="fw-bold text-dark">Wishlist Coming Soon</h6>
+        <p class="small mb-3">Save your favourite produce from local farms to quickly reorder later.</p>
+        <a href="{{ url_for('home') }}" class="btn btn-outline-primary btn-sm"><i class="bi bi-shop me-1"></i> Browse Produce</a>
+      </div>
+    </div>
+
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function() {
+  'use strict';
+  function init() {
+    // Smooth scroll sidebar
+    document.querySelectorAll('#dash-nav .nav-link[href^="#"]').forEach(function(link) {
+      link.addEventListener('click', function(e) {
+        e.preventDefault();
+        document.querySelectorAll('#dash-nav .nav-link').forEach(function(l) { l.classList.remove('active'); });
+        link.classList.add('active');
+        var el = document.getElementById(link.getAttribute('href').slice(1));
+        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
+    });
+
+    // Nearby Farms
+    var farmListEl = document.getElementById('dash-farm-list');
+    function loadFarms(lat, lon) {
+      fetch('/api/nearby-farms?lat=' + lat + '&lon=' + lon)
+        .then(function(r) { return r.json(); })
+        .then(function(farms) {
+          farmListEl.querySelectorAll('.skel-col').forEach(function(el) { el.remove(); });
+          if (!farms.length) {
+            farmListEl.innerHTML = '<div class="col-12 text-center text-muted py-3"><i class="bi bi-tree me-1"></i>No farms nearby. <a href="/">Try full map view</a>.</div>';
+            return;
+          }
+          var html = farms.slice(0, 3).map(function(f) {
+            return '<div class="col-md-4"><div class="farm-card" style="padding:1rem;">' +
+              '<div class="farm-badge-header mb-2">' +
+              '<div class="farm-avatar" style="width:38px;height:38px;font-size:1.1rem;"><i class="bi bi-tree-fill"></i></div>' +
+              '<span class="distance-badge"><i class="bi bi-geo-alt-fill text-danger"></i> ' + f.distance + ' km</span>' +
+              '</div>' +
+              '<div class="fw-bold text-dark mb-0" style="font-size:.95rem;">' + f.name + '</div>' +
+              '<div class="text-muted small mb-2">' + (f.farm_type || 'Fresh Produce') + '</div>' +
+              '<a href="/farm/' + f.id + '" class="btn btn-primary btn-sm w-100">View Produce</a>' +
+              '</div></div>';
+          }).join('');
+          html += '<div class="col-md-4 d-flex align-items-center"><a href="/" class="btn btn-outline-primary btn-sm w-100 py-3"><i class="bi bi-grid me-1"></i>See All Farms</a></div>';
+          farmListEl.innerHTML = html;
+        })
+        .catch(function() {
+          farmListEl.innerHTML = '<div class="col-12 text-muted text-center py-3">Could not load farms. <a href="/">Browse on home page</a>.</div>';
+        });
+    }
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        function(p) { loadFarms(p.coords.latitude, p.coords.longitude); },
+        function() { loadFarms(12.9716, 77.5946); }
+      );
+    } else { loadFarms(12.9716, 77.5946); }
+
+    // Product browser
+    var allProducts = [];
+    var activeCategory = '';
+    var currentSort = 'name';
+    var searchQuery = '';
+    var prodGrid = document.getElementById('products-grid');
+    var prodEmpty = document.getElementById('products-empty');
+
+    function catIcon(cat) {
+      var m = {Vegetables:'🥦', Fruits:'🍎', Dairy:'🥛', Grains:'🌾', Herbs:'🌿'};
+      return m[cat] || '📦';
+    }
+    function stockBadge(s) {
+      if (s === null || s === undefined) return '<span class="stock-badge-avail">In Stock</span>';
+      if (s === 0) return '<span style="background:#fee2e2;color:#b91c1c;font-size:.74rem;font-weight:700;border-radius:999px;padding:.15rem .55rem;">Out of Stock</span>';
+      if (s <= 5) return '<span class="stock-badge-low">Low: ' + s + '</span>';
+      return '<span class="stock-badge-avail">' + s + ' avail</span>';
+    }
+    function renderProducts(list) {
+      prodGrid.querySelectorAll('.skel-col').forEach(function(el) { el.remove(); });
+      if (!list.length) { prodGrid.innerHTML = ''; prodEmpty.classList.remove('d-none'); return; }
+      prodEmpty.classList.add('d-none');
+      var isCustomer = {% if current_user.is_authenticated and current_user.role == 'customer' %}true{% else %}false{% endif %};
+      var isAuth = {% if current_user.is_authenticated %}true{% else %}false{% endif %};
+      prodGrid.innerHTML = list.slice(0, 12).map(function(p) {
+        var btn = '';
+        if (isCustomer) {
+          btn = '<form action="/cart/add/' + p.id + '" method="POST"><button type="submit" class="btn btn-primary btn-sm w-100"><i class="bi bi-cart-plus me-1"></i>Add to Cart</button></form>';
+        } else if (!isAuth) {
+          btn = '<a href="/login" class="btn btn-secondary btn-sm w-100">Login to Order</a>';
+        } else {
+          btn = '<span class="badge bg-light text-muted border w-100 py-2 d-block text-center">Viewing as {% if current_user.is_authenticated %}{{ current_user.role }}{% endif %}</span>';
+        }
+        var imgHtml = (p.image_url && p.image_url.trim())
+          ? '<img src="' + p.image_url + '" alt="' + p.name + '" style="width:100%;height:100%;object-fit:cover;" onerror="this.onerror=null;this.parentElement.innerHTML=\'' + catIcon(p.category) + '\';">'
+          : catIcon(p.category);
+        return '<div class="col-md-6 col-lg-4">' +
+          '<div class="product-card">' +
+          '<div class="product-card-img">' + imgHtml + '</div>' +
+          '<div class="product-card-body">' +
+          '<div class="d-flex justify-content-between align-items-start mb-1">' +
+          '<h6 class="fw-bold text-dark mb-0" style="font-size:.9rem;">' + p.name + '</h6>' +
+          stockBadge(p.stock) + '</div>' +
+          '<div class="text-muted small mb-2">' + (p.description || 'Farm-fresh quality.') + '</div>' +
+          '<div class="d-flex align-items-center gap-1 mb-1">' +
+          '<span class="product-price">$' + Number(p.price).toFixed(2) + '</span>' +
+          '<span class="product-unit">/ ' + p.unit + '</span></div>' +
+          '<a href="/farm/' + p.farm_id + '" class="text-muted text-decoration-none" style="font-size:.78rem;"><i class="bi bi-shop me-1 text-success"></i>' + p.farm_name + '</a>' +
+          '<div class="mt-2">' + btn + '</div>' +
+          '</div></div></div>';
+      }).join('');
+    }
+    function applyFilters() {
+      var r = allProducts.slice();
+      if (searchQuery) r = r.filter(function(p) {
+        return p.name.toLowerCase().indexOf(searchQuery) >= 0 ||
+          (p.description || '').toLowerCase().indexOf(searchQuery) >= 0 ||
+          p.farm_name.toLowerCase().indexOf(searchQuery) >= 0;
+      });
+      if (activeCategory) r = r.filter(function(p) { return (p.category || 'Other') === activeCategory; });
+      if (currentSort === 'price_asc') r.sort(function(a,b) { return a.price - b.price; });
+      else if (currentSort === 'price_desc') r.sort(function(a,b) { return b.price - a.price; });
+      else r.sort(function(a,b) { return a.name.localeCompare(b.name); });
+      renderProducts(r);
+    }
+
+    fetch('/api/customer/products')
+      .then(function(r) { return r.json(); })
+      .then(function(data) { allProducts = data; applyFilters(); })
+      .catch(function() {
+        prodGrid.innerHTML = '<div class="col-12 text-center text-muted py-3">Could not load products. <a href="/">Browse farms directly</a>.</div>';
+      });
+
+    var searchInput = document.getElementById('prod-search');
+    var sortSel = document.getElementById('prod-sort');
+    if (searchInput) {
+      var deb;
+      searchInput.addEventListener('input', function() {
+        clearTimeout(deb);
+        deb = setTimeout(function() { searchQuery = searchInput.value.toLowerCase().trim(); applyFilters(); }, 300);
+      });
+    }
+    if (sortSel) { sortSel.addEventListener('change', function() { currentSort = sortSel.value; applyFilters(); }); }
+    document.querySelectorAll('.cat-pill').forEach(function(pill) {
+      pill.addEventListener('click', function() {
+        document.querySelectorAll('.cat-pill').forEach(function(p) { p.classList.remove('active'); });
+        pill.classList.add('active');
+        activeCategory = pill.dataset.cat;
+        applyFilters();
+      });
+    });
+    window.resetProductFilters = function() {
+      activeCategory = ''; searchQuery = ''; currentSort = 'name';
+      if (searchInput) searchInput.value = '';
+      if (sortSel) sortSel.value = 'name';
+      document.querySelectorAll('.cat-pill').forEach(function(p) { p.classList.remove('active'); });
+      var allPill = document.querySelector('.cat-pill[data-cat=""]');
+      if (allPill) allPill.classList.add('active');
+      applyFilters();
+    };
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else { init(); }
+})();
+</script>
+{% endblock %}

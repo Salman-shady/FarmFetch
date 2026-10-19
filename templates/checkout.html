@@ -1,0 +1,159 @@
+{% extends "base.html" %}
+
+{% block title %}Checkout - FarmFetch{% endblock %}
+
+{% block content %}
+<div class="row g-4 justify-content-center">
+    <div class="col-12">
+        <h2 class="fw-bold mb-1"><i class="bi bi-credit-card text-success me-2"></i>Checkout & Delivery Details</h2>
+        <p class="text-muted small mb-0">Confirm your delivery details to dispatch your fresh produce directly from the farm.</p>
+    </div>
+
+    <!-- Order Summary Column -->
+    <div class="col-lg-5 order-lg-2">
+        <div class="dashboard-card shadow-sm sticky-top" style="top: 90px;">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h5 class="fw-bold mb-0 text-dark">Order Summary</h5>
+                <span class="badge bg-light text-dark border">{{ cart_items | length }} items</span>
+            </div>
+
+            <ul class="list-group list-group-flush mb-3">
+                {% for data in cart_items %}
+                <li class="list-group-item d-flex justify-content-between align-items-center px-0 py-2">
+                    <div>
+                        <div class="fw-semibold text-dark">{{ data.item.name }}</div>
+                        <small class="text-muted">{{ data.quantity }} x ${{ "%.2f"|format(data.item.price) }} ({{ data.item.unit }})</small>
+                    </div>
+                    <span class="fw-bold text-dark">${{ "%.2f"|format(data.item.price * data.quantity) }}</span>
+                </li>
+                {% endfor %}
+            </ul>
+
+            <div class="border-top pt-3">
+                <div class="d-flex justify-content-between align-items-center mb-1">
+                    <span class="text-muted">Subtotal:</span>
+                    <span class="fw-semibold">${{ "%.2f"|format(total_price) }}</span>
+                </div>
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <span class="text-muted">Delivery:</span>
+                    <span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill">Free Local Dispatch</span>
+                </div>
+                <hr class="my-2">
+                <div class="d-flex justify-content-between align-items-center">
+                    <span class="fs-5 fw-bold text-dark">Total Due:</span>
+                    <span class="fs-4 fw-extrabold text-success">${{ "%.2f"|format(total_price) }}</span>
+                </div>
+            </div>
+
+            <div class="alert alert-light border rounded-3 mt-4 mb-0 p-3">
+                <div class="d-flex align-items-center gap-2 mb-1 text-success fw-bold">
+                    <i class="bi bi-cash-coin fs-5"></i>
+                    <span>Cash on Delivery (COD)</span>
+                </div>
+                <p class="small text-muted mb-0">Pay upon delivery once you inspect your freshly harvested farm produce.</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Delivery Form Column -->
+    <div class="col-lg-7 order-lg-1">
+        <div class="dashboard-card shadow-sm">
+            <h5 class="fw-bold mb-4 text-dark border-bottom pb-2">
+                <i class="bi bi-truck text-success me-2"></i>Delivery Address
+            </h5>
+            
+            <form method="POST" id="checkout-form">
+                <div class="mb-3">
+                    <label for="name" class="form-label">Recipient Full Name</label>
+                    <div class="input-group">
+                        <span class="input-group-text bg-white border-end-0 text-muted"><i class="bi bi-person"></i></span>
+                        <input type="text" class="form-control border-start-0 ps-0" id="name" name="name" 
+                               value="{{ current_user.email.split('@')[0] }}" required placeholder="e.g., Alice Smith">
+                    </div>
+                </div>
+
+                <div class="mb-3">
+                    <label for="address" class="form-label">Full Delivery Address</label>
+                    <div class="input-group">
+                        <span class="input-group-text bg-white border-end-0 text-muted"><i class="bi bi-geo-alt"></i></span>
+                        <input type="text" class="form-control border-start-0 ps-0" id="address" name="address" 
+                               placeholder="e.g., Apartment 4B, 124 Green Meadows Road" required>
+                    </div>
+                </div>
+
+                <div class="mb-3">
+                    <label for="phone" class="form-label">Mobile Phone Number</label>
+                    <div class="input-group">
+                        <span class="input-group-text bg-white border-end-0 text-muted"><i class="bi bi-telephone"></i></span>
+                        <input type="tel" class="form-control border-start-0 ps-0" id="phone" name="phone" 
+                               placeholder="10-digit phone number for driver contact" required>
+                    </div>
+                </div>
+
+                <!-- Geolocation capture status -->
+                <div class="p-3 mb-4 rounded-3 border bg-light d-flex align-items-center justify-content-between">
+                    <div class="d-flex align-items-center gap-2">
+                        <i class="bi bi-geo-fill text-danger fs-5"></i>
+                        <div>
+                            <span class="fw-semibold small d-block" id="gps-status-text">Pinpointing delivery coordinates...</span>
+                            <small class="text-muted" id="gps-coords-display">Enables live map tracking for driver & customer</small>
+                        </div>
+                    </div>
+                    <span class="badge bg-secondary-subtle text-secondary rounded-pill" id="gps-badge">Locating</span>
+                </div>
+
+                <!-- Hidden inputs for coordinates (Preserved) -->
+                <input type="hidden" id="customer_latitude" name="customer_latitude">
+                <input type="hidden" id="customer_longitude" name="customer_longitude">
+
+                <button type="submit" class="btn btn-primary btn-lg w-100 py-3 fw-bold fs-6">
+                    <i class="bi bi-check2-circle me-1"></i> Place Order Now
+                </button>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+        const latInput = document.getElementById('customer_latitude');
+        const lonInput = document.getElementById('customer_longitude');
+        const statusText = document.getElementById('gps-status-text');
+        const coordsDisplay = document.getElementById('gps-coords-display');
+        const gpsBadge = document.getElementById('gps-badge');
+
+        if (navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition(
+                (pos) => {
+                    const lat = pos.coords.latitude.toFixed(6);
+                    const lon = pos.coords.longitude.toFixed(6);
+                    latInput.value = lat;
+                    lonInput.value = lon;
+                    statusText.innerText = "Coordinates captured successfully!";
+                    coordsDisplay.innerText = `GPS: ${lat}, ${lon}`;
+                    gpsBadge.className = "badge bg-success-subtle text-success border border-success-subtle rounded-pill";
+                    gpsBadge.innerText = "Accurate GPS";
+                },
+                (err) => {
+                    console.warn("Geolocation warning:", err.message);
+                    // Fallback demo coordinates
+                    latInput.value = "12.9720";
+                    lonInput.value = "77.5950";
+                    statusText.innerText = "Standard delivery area assigned";
+                    coordsDisplay.innerText = "Driver will navigate to your entered street address.";
+                    gpsBadge.className = "badge bg-warning-subtle text-warning border border-warning-subtle rounded-pill";
+                    gpsBadge.innerText = "Street Address";
+                },
+                { timeout: 6000 }
+            );
+        } else {
+            latInput.value = "12.9720";
+            lonInput.value = "77.5950";
+            statusText.innerText = "Street address navigation";
+            gpsBadge.innerText = "Standard";
+        }
+    });
+</script>
+{% endblock %}

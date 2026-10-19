@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+
+{% block content %}
+    <h2>Menu for {{ restaurant.name }}</h2>
+    <p><em>{{ restaurant.cuisine_type }} | {{ restaurant.address }}</em></p>
+
+    <div class="row">
+        {% for item in menu_items %}
+            <div class="col-md-6 mb-3">
+                <div class="card">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between"></div>
+                            <h5 class="card-title">{{ item.name }}</h5>
+                            <h6 class="card-subtitle mb-2 text-muted">${{ "%.2f"|format(item.price) }}</h6>
+                        </div>
+                        <p class="card-text">{{ item.description }}</p>
+                        {% if current_user.is_authenticated and current_user.role == 'customer' %}
+                        <form action="{{ url_for('add_to_cart', item_id=item.id) }}" method="POST">
+                            <button type="submit" class="btn btn-primary btn-sm">Add to Cart</button>
+                        </form>
+                        {% elif not current_user.is_authenticated %}
+                        <a href="{{ url_for('login') }}" class="btn btn-secondary btn-sm">Login to Order</a>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        {% endfor %}
+    </div>
+{% endblock %}
