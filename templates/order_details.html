@@ -221,6 +221,52 @@
             </form>
         </div>
     </div>
+    {% elif order.status in ['READY_FOR_PICKUP', 'Ready for Pickup'] %}
+    <div class="dashboard-card shadow-sm mb-4 border-start border-4 border-warning bg-white">
+        <div class="d-flex flex-wrap justify-content-between align-items-center gap-3">
+            <div>
+                <div class="d-flex align-items-center gap-2 mb-1">
+                    <span class="badge bg-warning text-dark px-2 py-1"><i class="bi bi-box-seam me-1"></i>Ready for Delivery</span>
+                    <h5 class="fw-bold mb-0 text-dark">Assign a Delivery Driver</h5>
+                </div>
+                <p class="text-muted small mb-0">
+                    Harvest items are packed and awaiting pickup. View AI/rule-based driver recommendations ranked by distance to farm and workload.
+                </p>
+            </div>
+            <button type="button" class="btn btn-warning fw-bold text-dark px-3" data-bs-toggle="modal" data-bs-target="#assignDriverModal">
+                <i class="bi bi-person-check-fill me-1"></i> View & Assign Driver
+            </button>
+        </div>
+    </div>
+
+    <!-- Farmer Driver Assignment Modal -->
+    <div class="modal fade" id="assignDriverModal" tabindex="-1" aria-labelledby="assignDriverModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-lg">
+            <div class="modal-content border-0 shadow">
+                <div class="modal-header bg-light">
+                    <div>
+                        <h5 class="modal-title fw-bold text-dark" id="assignDriverModalLabel">
+                            <i class="bi bi-robot text-primary me-2"></i>Smart Driver Recommendations
+                        </h5>
+                        <small class="text-muted">Ranked by proximity to farm, availability status, and active delivery load</small>
+                    </div>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body p-4">
+                    <div id="driver-recs-loading" class="text-center py-4">
+                        <div class="spinner-border text-primary" role="status"></div>
+                        <p class="text-muted small mt-2 mb-0">Finding nearest available drivers and calculating route distances...</p>
+                    </div>
+                    <div id="driver-recs-container" class="d-none">
+                        <!-- Loaded dynamically via /api/order/{{ order.id }}/recommendations -->
+                    </div>
+                </div>
+                <div class="modal-footer bg-light">
+                    <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
     {% endif %}
 {% endif %}
 
@@ -351,13 +397,21 @@
                 </span>
             </div>
 
+            <!-- Stale GPS Warning Banner (Feature 1) -->
+            <div id="gps-stale-alert" class="alert alert-warning py-2 px-3 small d-none mb-2 rounded-2 border-0 shadow-sm d-flex align-items-center gap-2">
+                <i class="bi bi-exclamation-triangle-fill fs-6 text-warning"></i>
+                <div>
+                    <strong>GPS Signal Inactive:</strong> No live location updates received in over 60 seconds. Driver may be offline or in poor reception.
+                </div>
+            </div>
+
             <!-- Live Distance / ETA HUD Strip -->
             <div class="p-2 mb-2 rounded bg-light border d-flex justify-content-between align-items-center small" id="gps-hud-strip">
                 <div class="d-flex align-items-center gap-2">
                     <span class="badge bg-success text-white rounded-pill" id="hud-status-badge">
                         <i class="bi bi-geo-alt-fill me-1"></i>Active Tracking
                     </span>
-                    <span class="text-muted fw-semibold" id="hud-eta-text">Calculating route...</span>
+                    <span class="text-muted fw-semibold" id="hud-eta-text">Connecting to routing service...</span>
                 </div>
                 <div class="d-flex gap-1">
                     <button type="button" class="btn btn-outline-primary btn-sm py-0 px-2" id="btn-focus-driver" style="font-size: 0.72rem; display: none;">
@@ -367,6 +421,11 @@
                         <i class="bi bi-arrows-fullscreen"></i> Fit Route
                     </button>
                 </div>
+            </div>
+
+            <div class="d-flex justify-content-between align-items-center px-1 mb-2 text-muted" style="font-size: 0.72rem;">
+                <span id="last-update-time"><i class="bi bi-clock-history me-1"></i>Last GPS Ping: {{ order.last_location_update or 'Awaiting live signal' }}</span>
+                <span id="route-type-badge" class="badge bg-light text-secondary border">Calculating route...</span>
             </div>
 
             <!-- Leaflet Interactive Map ("Good View") -->
@@ -438,10 +497,15 @@
         document.addEventListener('DOMContentLoaded', () => {
             const socket = io();
             const orderId = '{{ order.id }}';
+            const orderStatus = '{{ order.status }}';
+
+            let lastLocationReceivedAt = {{ (order.last_location_update * 1000)|int if order.last_location_update else 'null' }};
 
             // --- Real-time Socket.IO Connection & Room Join ---
             socket.on('connect', () => {
                 socket.emit('join_order_room', { order_id: orderId });
+                // Reconnect recovery: retrieve last authorized driver location
+                socket.emit('request_order_location', { order_id: orderId });
             });
 
             // --- Status Update Listener ---
@@ -460,13 +524,49 @@
                     if (driverEl) {
                         driverEl.innerHTML = `<i class="bi bi-truck me-1"></i>Delivery by: ${data.driver_name}`;
                     }
+                    const hudDriver = document.getElementById('hud-driver-name');
+                    if (hudDriver) {
+                        hudDriver.innerText = data.driver_name;
+                    }
                 }
                 
-                // If status changed to PICKED_UP or DELIVERED, refresh if OTP cards or actions changed
+                applyStatusToHud(data.status);
+
+                // If status changed to terminal or critical state, refresh if action cards changed
                 if (data.status === 'PICKED_UP' || data.status === 'DELIVERED' || data.status === 'CANCELLED' || data.status === 'DRIVER_ASSIGNED') {
+                    if (data.status === 'DELIVERED' || data.status === 'CANCELLED') {
+                        stopLiveTrackingHud();
+                    }
                     setTimeout(() => window.location.reload(), 1500);
                 }
             });
+
+            // --- Reconnect Location Sync ---
+            socket.on('order_location_sync', (data) => {
+                if (data && data.lat != null && data.lng != null) {
+                    const tsStr = data.updated_at ? new Date(data.updated_at * 1000).toLocaleTimeString() : null;
+                    updateDriverLocation(data.lat, data.lng, tsStr, data.is_stale);
+                }
+            });
+
+            // --- Tracking Stopped Event ---
+            socket.on('tracking_stopped', () => {
+                stopLiveTrackingHud();
+            });
+
+            function stopLiveTrackingHud() {
+                const badge = document.getElementById('hud-status-badge');
+                const etaText = document.getElementById('hud-eta-text');
+                if (badge) {
+                    badge.className = 'badge bg-secondary text-white rounded-pill';
+                    badge.innerHTML = '<i class="bi bi-stop-circle me-1"></i>Tracking Ended';
+                }
+                if (etaText) {
+                    etaText.innerText = 'Delivery finished or cancelled. Location sharing stopped.';
+                }
+                const staleAlert = document.getElementById('gps-stale-alert');
+                if (staleAlert) staleAlert.classList.add('d-none');
+            }
 
             // --- Live Real-Time Chat Logic ---
             const chatForm = document.getElementById('chat-form');
@@ -632,7 +732,6 @@
 
                 if (boundsGroup.length > 1) {
                     map.fitBounds(boundsGroup, { padding: [40, 40] });
-                    drawRoutePolyline();
                 }
 
                 const recenterBtn = document.getElementById('btn-recenter-map');
@@ -659,14 +758,52 @@
                 }
 
                 // Initial HUD state based on order status
-                applyStatusToHud('{{ order.status }}');
+                applyStatusToHud(orderStatus);
 
-                // If picked up or assigned without prior GPS stream, provide initial active route view
-                if (('{{ order.status }}' === 'PICKED_UP' || '{{ order.status }}' === 'Picked Up') && !lastDriverLat && farmLat && customerLat) {
-                    const estLat = farmLat + (customerLat - farmLat) * 0.45;
-                    const estLng = farmLng + (customerLng - farmLng) * 0.45;
-                    updateDriverLocation(estLat, estLng);
-                }
+                // Fetch real road route from OSRM endpoint
+                fetchRoadRoute();
+            }
+
+            // Real OSRM Road Route Fetcher
+            function fetchRoadRoute() {
+                fetch(`/api/order/${orderId}/route`)
+                    .then(res => res.json())
+                    .then(data => {
+                        if (data && data.geometry && data.geometry.length > 0) {
+                            if (routePolyline) map.removeLayer(routePolyline);
+                            routePolyline = L.polyline(data.geometry, {
+                                color: data.is_road_route ? '#2563eb' : '#f59e0b',
+                                weight: 5,
+                                opacity: 0.85,
+                                dashArray: data.is_road_route ? null : '8, 8'
+                            }).addTo(map);
+
+                            const typeBadge = document.getElementById('route-type-badge');
+                            if (typeBadge) {
+                                typeBadge.className = data.is_road_route ? 
+                                    'badge bg-success-subtle text-success border border-success-subtle' : 
+                                    'badge bg-warning-subtle text-dark border border-warning-subtle';
+                                typeBadge.innerText = data.is_road_route ? 'OSRM Road Route' : 'Straight-Line (Road N/A)';
+                            }
+
+                            const etaTextEl = document.getElementById('hud-eta-text');
+                            if (etaTextEl && !driverMarker) {
+                                if (data.is_road_route) {
+                                    etaTextEl.innerHTML = `<strong>${data.distance_km} km</strong> road route • approx <strong>${data.eta_mins} mins</strong>`;
+                                } else {
+                                    etaTextEl.innerText = data.eta_text || `${data.distance_km} km straight-line (Road ETA unavailable)`;
+                                }
+                            }
+                        }
+                    })
+                    .catch(err => {
+                        console.warn('Road route fetch warning:', err);
+                        const typeBadge = document.getElementById('route-type-badge');
+                        if (typeBadge) {
+                            typeBadge.className = 'badge bg-secondary text-white';
+                            typeBadge.innerText = 'Routing Unavailable';
+                        }
+                    });
             }
 
             function applyStatusToHud(status) {
@@ -704,32 +841,18 @@
                 }
             }
 
-            function drawRoutePolyline() {
-                if (!map) return;
-                const points = [];
-                if (farmMarker) points.push(farmMarker.getLatLng());
-                if (driverMarker) points.push(driverMarker.getLatLng());
-                if (customerMarker) points.push(customerMarker.getLatLng());
-
-                if (points.length >= 2) {
-                    if (routePolyline) map.removeLayer(routePolyline);
-                    routePolyline = L.polyline(points, {
-                        color: '#2563eb',
-                        weight: 4,
-                        opacity: 0.75,
-                        dashArray: '8, 8'
-                    }).addTo(map);
-                }
-            }
-
-            function updateDriverLocation(lat, lng) {
+            function updateDriverLocation(lat, lng, timestampStr, isStale) {
                 if (!map) return;
                 const latNum = parseFloat(lat);
                 const lngNum = parseFloat(lng);
+                if (isNaN(latNum) || isNaN(lngNum)) return;
 
+                lastLocationReceivedAt = Date.now();
+
+                // Anti-flicker: update existing marker position smoothly
                 if (!driverMarker) {
                     driverMarker = L.marker([latNum, lngNum], { icon: vehicleIcon }).addTo(map)
-                        .bindPopup('<strong>Delivery Driver</strong><br>En route with fresh produce');
+                        .bindPopup('<strong>Delivery Driver</strong><br>Live GPS Location');
                 } else {
                     driverMarker.setLatLng([latNum, lngNum]);
                 }
@@ -740,27 +863,134 @@
                     focusDriverBtn.style.display = 'inline-block';
                 }
 
-                drawRoutePolyline();
+                // Update timestamp display
+                const timeEl = document.getElementById('last-update-time');
+                if (timeEl) {
+                    const displayTime = timestampStr || new Date().toLocaleTimeString();
+                    timeEl.innerHTML = `<i class="bi bi-clock-history me-1"></i>Last GPS Ping: ${displayTime}`;
+                }
 
-                // Compute distance and ETA HUD
+                // Update stale alert banner
+                const staleAlert = document.getElementById('gps-stale-alert');
+                if (staleAlert) {
+                    if (isStale) {
+                        staleAlert.classList.remove('d-none');
+                    } else {
+                        staleAlert.classList.add('d-none');
+                    }
+                }
+
+                // Update remaining distance to destination
                 if (customerLat && customerLng) {
                     const distKm = haversineDist(latNum, lngNum, customerLat, customerLng);
-                    const etaMinutes = Math.max(2, Math.round((distKm / 28) * 60)); // approx 28 km/h in urban
                     const etaTextEl = document.getElementById('hud-eta-text');
                     if (etaTextEl) {
-                        etaTextEl.innerHTML = `<strong>${distKm.toFixed(1)} km</strong> away (approx <strong>${etaMinutes} mins</strong>)`;
+                        etaTextEl.innerHTML = `<strong>${distKm.toFixed(1)} km</strong> remaining to destination`;
                     }
                 }
             }
+
+            // Periodic Stale GPS Monitor (>60 seconds during active delivery)
+            setInterval(() => {
+                const isOutForDelivery = (orderStatus === 'PICKED_UP' || orderStatus === 'Picked Up');
+                if (isOutForDelivery && lastLocationReceivedAt) {
+                    const elapsed = Date.now() - lastLocationReceivedAt;
+                    const staleAlert = document.getElementById('gps-stale-alert');
+                    if (staleAlert) {
+                        if (elapsed > 60000) {
+                            staleAlert.classList.remove('d-none');
+                        } else {
+                            staleAlert.classList.add('d-none');
+                        }
+                    }
+                }
+            }, 5000);
 
             initLiveMap();
 
             // Receive live GPS broadcasts from driver
             socket.on('customer_location_update', (loc) => {
-                if (loc && loc.lat && loc.lng) {
-                    updateDriverLocation(loc.lat, loc.lng);
+                if (loc && loc.lat != null && loc.lng != null) {
+                    const ts = loc.timestamp ? new Date(loc.timestamp * 1000).toLocaleTimeString() : new Date().toLocaleTimeString();
+                    updateDriverLocation(loc.lat, loc.lng, ts, false);
                 }
             });
+
+            // --- Farmer Driver Recommendation Modal Handler ---
+            const assignModalEl = document.getElementById('assignDriverModal');
+            if (assignModalEl) {
+                assignModalEl.addEventListener('show.bs.modal', () => {
+                    const container = document.getElementById('driver-recs-container');
+                    const loader = document.getElementById('driver-recs-loading');
+                    if (!container) return;
+
+                    loader.classList.remove('d-none');
+                    container.classList.add('d-none');
+
+                    fetch(`/api/order/${orderId}/recommendations`)
+                        .then(res => res.json())
+                        .then(data => {
+                            loader.classList.add('d-none');
+                            container.classList.remove('d-none');
+
+                            if (!data.recommendations || data.recommendations.length === 0) {
+                                container.innerHTML = `
+                                    <div class="text-center py-4">
+                                        <i class="bi bi-people text-muted fs-1 mb-2"></i>
+                                        <h6 class="fw-bold">No Active Drivers Found</h6>
+                                        <p class="text-muted small mb-0">No registered drivers have set their status to Available. Drivers can switch status in their dashboard.</p>
+                                    </div>
+                                `;
+                                return;
+                            }
+
+                            let html = '<div class="list-group gap-2">';
+                            data.recommendations.forEach((d, index) => {
+                                const isTop = index === 0 && d.is_eligible;
+                                const availBadgeClass = d.availability === 'AVAILABLE' ? 'bg-success' : (d.availability === 'BUSY' ? 'bg-warning text-dark' : 'bg-secondary');
+                                
+                                html += `
+                                    <div class="list-group-item list-group-item-action p-3 rounded-3 border ${isTop ? 'border-primary shadow-sm bg-primary-subtle' : ''}">
+                                        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+                                            <div>
+                                                <div class="d-flex align-items-center gap-2 mb-1">
+                                                    <h6 class="fw-bold mb-0 text-dark">${d.name}</h6>
+                                                    <span class="badge ${availBadgeClass}">${d.availability}</span>
+                                                    ${isTop ? '<span class="badge bg-primary"><i class="bi bi-star-fill me-1"></i>Top Recommendation</span>' : ''}
+                                                </div>
+                                                <div class="text-muted small">
+                                                    <i class="bi bi-envelope me-1"></i>${d.email} 
+                                                    <span class="mx-1">•</span>
+                                                    <i class="bi bi-geo-alt me-1"></i>${d.distance_km != null ? d.distance_km + ' km to farm' : 'Location pending'}
+                                                    <span class="mx-1">•</span>
+                                                    <i class="bi bi-truck me-1"></i>${d.active_orders} active orders
+                                                </div>
+                                                <div class="mt-1 text-primary small fw-semibold">
+                                                    <i class="bi bi-info-circle me-1"></i>${d.reason}
+                                                </div>
+                                            </div>
+                                            <div>
+                                                <form action="/farmer/order/assign-driver/${orderId}" method="POST">
+                                                    <input type="hidden" name="driver_id" value="${d.driver_id}">
+                                                    <button type="submit" class="btn ${isTop ? 'btn-primary' : 'btn-outline-primary'} btn-sm fw-semibold">
+                                                        <i class="bi bi-check2-circle me-1"></i> Assign Driver
+                                                    </button>
+                                                </form>
+                                            </div>
+                                        </div>
+                                    </div>
+                                `;
+                            });
+                            html += '</div>';
+                            container.innerHTML = html;
+                        })
+                        .catch(err => {
+                            loader.classList.add('d-none');
+                            container.classList.remove('d-none');
+                            container.innerHTML = `<div class="alert alert-danger mb-0">Failed to load driver recommendations: ${err.message}</div>`;
+                        });
+                });
+            }
         });
     </script>
 {% endblock %}

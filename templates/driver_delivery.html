@@ -166,11 +166,36 @@
                 <h5 class="fw-bold mb-0 text-dark">
                     <i class="bi bi-map-fill text-success me-2"></i>Driver Route Navigation Map
                 </h5>
-                <span class="badge bg-light text-dark border">Live GPS Tracker</span>
+                <span class="badge bg-light text-dark border" id="driver-tracker-badge">Live GPS Tracker</span>
+            </div>
+
+            <!-- Permission Denied Alert Banner -->
+            <div id="driver-perm-alert" class="alert alert-danger d-none d-flex align-items-center gap-2 mb-2 p-2 small">
+                <i class="bi bi-exclamation-triangle-fill fs-5"></i>
+                <div>
+                    <strong>GPS Permission Denied!</strong> Location access is blocked in your browser. Live streaming to customer is inactive. Please click the padlock icon in your browser address bar to allow location.
+                </div>
+            </div>
+
+            <!-- Road Route & Distance HUD Strip -->
+            <div class="p-2 mb-2 rounded bg-light border d-flex justify-content-between align-items-center small" id="driver-route-strip">
+                <div class="d-flex align-items-center gap-2">
+                    <span class="badge bg-primary text-white rounded-pill" id="driver-route-badge">
+                        <i class="bi bi-geo-alt-fill me-1"></i>Calculating Route
+                    </span>
+                    <span class="text-muted fw-semibold" id="driver-eta-text">Connecting to road navigation...</span>
+                </div>
+                <button type="button" class="btn btn-outline-secondary btn-sm py-0 px-2" id="btn-fit-driver-map" style="font-size: 0.72rem;">
+                    <i class="bi bi-arrows-fullscreen"></i> Fit Route
+                </button>
             </div>
 
             <!-- Route Map Container -->
-            <div id="driver-map" style="height: 520px; border-radius: var(--radius-md); background: #eee;" class="border mt-3"></div>
+            <div id="driver-map" style="height: 480px; border-radius: var(--radius-md); background: #eee;" class="border"></div>
+            
+            <small class="text-muted d-block mt-2" style="font-size: 0.78rem;">
+                <i class="bi bi-info-circle me-1"></i>Blue polyline represents actual road driving path via OSRM. GPS streams live while delivery is active.
+            </small>
         </div>
     </div>
 </div>
@@ -188,7 +213,15 @@
             const farmLat = {{ order.farm.latitude or 'null' if order.farm else 'null' }};
             const farmLng = {{ order.farm.longitude or 'null' if order.farm else 'null' }};
             const orderId = '{{ order.id }}';
+            const orderStatus = '{{ order.status }}';
             const gpsStatusEl = document.getElementById('driver-gps-status');
+            const permAlert = document.getElementById('driver-perm-alert');
+            const routeBadge = document.getElementById('driver-route-badge');
+            const etaText = document.getElementById('driver-eta-text');
+
+            let watchId = null;
+            let driverMarker = null;
+            let navPolyline = null;
 
             const socket = io();
 
@@ -196,15 +229,26 @@
                 socket.emit('join_order_room', { order_id: orderId });
             });
 
-            // If farmer verifies pickup while driver is on this screen, auto-advance!
+            // Auto-advance if farmer confirms pickup or delivery completes
             socket.on('status_update', (data) => {
-                if (data.status === 'PICKED_UP' || data.status === 'DELIVERED') {
+                if (data.status === 'PICKED_UP' || data.status === 'DELIVERED' || data.status === 'CANCELLED') {
+                    if (data.status === 'DELIVERED' || data.status === 'CANCELLED') {
+                        stopGpsStreaming();
+                    }
                     window.location.reload();
                 }
             });
 
-            const defaultLat = customerLat || farmLat || 12.9716;
-            const defaultLng = customerLng || farmLng || 77.5946;
+            socket.on('tracking_stopped', () => {
+                stopGpsStreaming();
+                if (gpsStatusEl) {
+                    gpsStatusEl.innerText = "Delivery completed. Location sharing stopped.";
+                    gpsStatusEl.className = "badge bg-secondary text-white";
+                }
+            });
+
+            const defaultLat = farmLat || customerLat || 12.9716;
+            const defaultLng = farmLng || customerLng || 77.5946;
 
             const map = L.map('driver-map').setView([defaultLat, defaultLng], 13);
             L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -215,8 +259,9 @@
             const boundsGroup = [];
 
             // Farm Marker
+            let farmMarker = null;
             if (farmLat && farmLng) {
-                const farmMarker = L.marker([farmLat, farmLng], {
+                farmMarker = L.marker([farmLat, farmLng], {
                     icon: L.divIcon({
                         className: 'custom-map-icon',
                         html: '<div style="background:#16a34a;color:#fff;width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;box-shadow:0 3px 8px rgba(0,0,0,0.3);border:2px solid #fff;"><i class="bi bi-tree-fill"></i></div>',
@@ -228,8 +273,9 @@
             }
 
             // Customer Marker
+            let custMarker = null;
             if (customerLat && customerLng) {
-                const custMarker = L.marker([customerLat, customerLng], {
+                custMarker = L.marker([customerLat, customerLng], {
                     icon: L.divIcon({
                         className: 'custom-map-icon',
                         html: '<div style="background:#dc2626;color:#fff;width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;box-shadow:0 3px 8px rgba(0,0,0,0.3);border:2px solid #fff;"><i class="bi bi-house-door-fill"></i></div>',
@@ -244,23 +290,6 @@
                 map.fitBounds(boundsGroup, { padding: [50, 50] });
             }
 
-            let driverMarker = null;
-            let navPolyline = null;
-
-            function updateRoutePolyline(dLat, dLng) {
-                const points = [[dLat, dLng]];
-                if (customerLat && customerLng) {
-                    points.push([customerLat, customerLng]);
-                }
-                if (navPolyline) map.removeLayer(navPolyline);
-                navPolyline = L.polyline(points, {
-                    color: '#2563eb',
-                    weight: 4,
-                    opacity: 0.8,
-                    dashArray: '8, 8'
-                }).addTo(map);
-            }
-
             const vehicleIcon = L.divIcon({
                 className: 'custom-map-icon',
                 html: '<div class="radar-marker"><div style="background:#2563eb;color:#fff;width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;box-shadow:0 3px 10px rgba(37,99,235,0.4);border:2px solid #fff;margin:-6px 0 0 -6px;"><i class="bi bi-truck" style="font-size:1.1rem;"></i></div></div>',
@@ -268,40 +297,115 @@
                 iconAnchor: [17, 17]
             });
 
-            // Live Geolocation Streaming
-            if (navigator.geolocation) {
-                navigator.geolocation.watchPosition((position) => {
-                    const lat = position.coords.latitude;
-                    const lng = position.coords.longitude;
-                    
-                    if (gpsStatusEl) {
-                        gpsStatusEl.innerText = `Current GPS location: ${lat.toFixed(5)}, ${lng.toFixed(5)} (Streaming live to customer)`;
-                    }
+            // Fetch real road route from OSRM backend endpoint
+            function fetchRoadRoute() {
+                fetch(`/api/order/${orderId}/route`)
+                    .then(res => res.json())
+                    .then(data => {
+                        if (data && data.geometry && data.geometry.length > 0) {
+                            if (navPolyline) map.removeLayer(navPolyline);
+                            navPolyline = L.polyline(data.geometry, {
+                                color: data.is_road_route ? '#2563eb' : '#f59e0b',
+                                weight: 5,
+                                opacity: 0.85,
+                                dashArray: data.is_road_route ? null : '8, 8'
+                            }).addTo(map);
 
-                    socket.emit('driver_location_update', {
-                        order_id: orderId,
-                        lat: lat,
-                        lng: lng
-                    });
+                            if (routeBadge && etaText) {
+                                if (data.is_road_route) {
+                                    routeBadge.className = "badge bg-success text-white rounded-pill";
+                                    routeBadge.innerHTML = '<i class="bi bi-check2-circle me-1"></i>Road Route';
+                                    etaText.innerHTML = `<strong>${data.distance_km} km</strong> • approx <strong>${data.eta_mins} mins</strong>`;
+                                } else {
+                                    routeBadge.className = "badge bg-warning text-dark rounded-pill";
+                                    routeBadge.innerHTML = '<i class="bi bi-exclamation-triangle me-1"></i>Straight Line';
+                                    etaText.innerText = data.eta_text || `${data.distance_km} km (Route ETA unavailable)`;
+                                }
+                            }
+                        }
+                    })
+                    .catch(err => console.warn('Road route fetch warning:', err));
+            }
 
-                    if (!driverMarker) {
-                        driverMarker = L.marker([lat, lng], { icon: vehicleIcon }).addTo(map)
-                            .bindPopup('<b>Your Current Vehicle Position</b>').openPopup();
-                    } else {
-                        driverMarker.setLatLng([lat, lng]);
-                    }
+            fetchRoadRoute();
 
-                    updateRoutePolyline(lat, lng);
-                }, (err) => {
-                    console.warn('Driver geolocation error:', err.message);
-                    if (gpsStatusEl) {
-                        gpsStatusEl.innerText = "Location notice: Using standard GPS coordinates.";
+            // Fit route camera button
+            const fitBtn = document.getElementById('btn-fit-driver-map');
+            if (fitBtn) {
+                fitBtn.addEventListener('click', () => {
+                    const allPts = [];
+                    if (farmMarker) allPts.push(farmMarker.getLatLng());
+                    if (custMarker) allPts.push(custMarker.getLatLng());
+                    if (driverMarker) allPts.push(driverMarker.getLatLng());
+                    if (allPts.length > 0) {
+                        map.fitBounds(L.latLngBounds(allPts), { padding: [50, 50] });
                     }
-                }, {
-                    enableHighAccuracy: true,
-                    maximumAge: 5000,
-                    timeout: 8000
                 });
+            }
+
+            function stopGpsStreaming() {
+                if (watchId !== null && navigator.geolocation) {
+                    navigator.geolocation.clearWatch(watchId);
+                    watchId = null;
+                }
+            }
+
+            // Only stream geolocation while order is in active delivery
+            const isActive = orderStatus === 'DRIVER_ASSIGNED' || orderStatus === 'PICKED_UP' || orderStatus === 'Picked Up';
+
+            if (isActive && navigator.geolocation) {
+                watchId = navigator.geolocation.watchPosition(
+                    (position) => {
+                        const lat = position.coords.latitude;
+                        const lng = position.coords.longitude;
+                        
+                        if (permAlert) permAlert.classList.add('d-none');
+
+                        if (gpsStatusEl) {
+                            gpsStatusEl.innerText = `Streaming Live GPS (${lat.toFixed(5)}, ${lng.toFixed(5)})`;
+                            gpsStatusEl.className = "badge bg-success text-white";
+                        }
+
+                        // Emit authenticated location update
+                        socket.emit('driver_location_update', {
+                            order_id: orderId,
+                            lat: lat,
+                            lng: lng
+                        });
+
+                        if (!driverMarker) {
+                            driverMarker = L.marker([lat, lng], { icon: vehicleIcon }).addTo(map)
+                                .bindPopup('<b>Your Current Position</b>');
+                        } else {
+                            driverMarker.setLatLng([lat, lng]);
+                        }
+                    },
+                    (err) => {
+                        console.warn('Driver geolocation error:', err.message);
+                        if (err.code === err.PERMISSION_DENIED) {
+                            if (permAlert) permAlert.classList.remove('d-none');
+                            if (gpsStatusEl) {
+                                gpsStatusEl.innerText = "GPS Permission Denied. Live streaming paused.";
+                                gpsStatusEl.className = "badge bg-danger text-white";
+                            }
+                        } else {
+                            if (gpsStatusEl) {
+                                gpsStatusEl.innerText = "Acquiring accurate GPS fix...";
+                                gpsStatusEl.className = "badge bg-warning text-dark";
+                            }
+                        }
+                    },
+                    {
+                        enableHighAccuracy: true,
+                        maximumAge: 4000,
+                        timeout: 9000
+                    }
+                );
+            } else if (!isActive) {
+                if (gpsStatusEl) {
+                    gpsStatusEl.innerText = "Location sharing inactive for completed/pending order.";
+                    gpsStatusEl.className = "badge bg-secondary text-white";
+                }
             }
         });
     </script>

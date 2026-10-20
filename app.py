@@ -1,6 +1,9 @@
 import os
 import math 
 import datetime
+import time
+import urllib.request
+import json
 import secrets
 import hashlib
 import hmac
@@ -230,6 +233,12 @@ class BaseModel(metaclass=ModelMeta):
         obj._is_dirty = False
         return obj
 
+    @classmethod
+    def get_by_id(cls, ident):
+        if ident is None:
+            return None
+        return cls.query.get(ident)
+
     def __getattr__(self, name):
         if name in ('_data', '_is_dirty', 'id'):
             return super().__getattribute__(name)
@@ -246,7 +255,9 @@ class BaseModel(metaclass=ModelMeta):
             'idempotency_key', 'stock_reserved', 'stock_restored',
             'accepted_at', 'preparing_at', 'ready_at', 'assigned_at', 'picked_up_at',
             'delivered_at', 'cancelled_at', 'failed_at', 'cancellation_reason', 'failure_reason',
-            'driver_latitude', 'driver_longitude', 'last_location_at'
+            'driver_latitude', 'driver_longitude', 'last_location_at',
+            'last_latitude', 'last_longitude', 'last_location_update', 'last_active_at',
+            'availability', 'phone', 'name'
         ):
             return None
         raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
@@ -332,6 +343,11 @@ db = DB()
 
 # --- Database Models ---
 
+class DriverAvailability:
+    AVAILABLE = 'AVAILABLE'
+    BUSY = 'BUSY'
+    OFFLINE = 'OFFLINE'
+
 class User(BaseModel, UserMixin):
     __collection__ = 'users'
 
@@ -355,6 +371,40 @@ class User(BaseModel, UserMixin):
     @property
     def orders(self):
         return Order.query.filter_by(customer_id=self.id).all()
+
+    @property
+    def availability(self):
+        """Returns the effective driver availability."""
+        if self.role == 'driver':
+            active_count = mongo_db['orders'].count_documents({
+                'driver_id': self.id,
+                'status': {'$in': [OrderStatus.DRIVER_ASSIGNED, OrderStatus.PICKED_UP, 'Picked Up']}
+            })
+            if active_count > 0:
+                return DriverAvailability.BUSY
+            return self._data.get('availability', DriverAvailability.AVAILABLE)
+        return self._data.get('availability', DriverAvailability.AVAILABLE)
+
+    def set_availability(self, status):
+        """Allows authenticated drivers to update their availability."""
+        valid_statuses = [DriverAvailability.AVAILABLE, DriverAvailability.BUSY, DriverAvailability.OFFLINE]
+        status = str(status).strip().upper()
+        if status not in valid_statuses:
+            return False, f"Invalid status '{status}'. Must be one of {', '.join(valid_statuses)}."
+        if status == DriverAvailability.AVAILABLE and self.role == 'driver':
+            active_count = mongo_db['orders'].count_documents({
+                'driver_id': self.id,
+                'status': {'$in': [OrderStatus.DRIVER_ASSIGNED, OrderStatus.PICKED_UP, 'Picked Up']}
+            })
+            if active_count > 0:
+                return False, f"Cannot switch to Available while you have {active_count} active delivery assignment(s)."
+        self._data['availability'] = status
+        self._is_dirty = True
+        mongo_db['users'].update_one(
+            {'_id': self.id},
+            {'$set': {'availability': status, 'last_active_at': datetime.datetime.now()}}
+        )
+        return True, None
 
 
 class Farm(BaseModel):
@@ -618,7 +668,222 @@ def transition_order_status(order, new_status, actor_user=None, notes=None, **ex
     order.status = target_norm
 
     emit_order_status_update(order, target_norm, actor_user)
+
+    # Synchronize driver availability when order lifecycle changes
+    assigned_driver_id = getattr(order, 'driver_id', None)
+    if assigned_driver_id:
+        if target_norm == OrderStatus.DRIVER_ASSIGNED:
+            mongo_db['users'].update_one(
+                {'_id': assigned_driver_id},
+                {'$set': {'availability': DriverAvailability.BUSY, 'last_active_at': now}}
+            )
+        elif target_norm in [OrderStatus.DELIVERED, OrderStatus.CANCELLED, OrderStatus.DELIVERY_FAILED]:
+            remaining_active = mongo_db['orders'].count_documents({
+                'driver_id': assigned_driver_id,
+                'status': {'$in': [OrderStatus.DRIVER_ASSIGNED, OrderStatus.PICKED_UP, 'Picked Up']},
+                '_id': {'$ne': order.id}
+            })
+            if remaining_active == 0:
+                mongo_db['users'].update_one(
+                    {'_id': assigned_driver_id},
+                    {'$set': {'availability': DriverAvailability.AVAILABLE, 'last_active_at': now}}
+                )
+
     return True, None
+
+
+# --- Geolocation, OSRM Road Routing & Smart Driver Recommendation ---
+
+OSRM_BASE_URL = os.environ.get('OSRM_BASE_URL', 'https://router.project-osrm.org').rstrip('/')
+ROUTE_CACHE = {}  # (s_lat, s_lng, e_lat, e_lng) -> {'time': ts, 'data': dict}
+ROUTE_CACHE_TTL = 300  # 5 minutes cache
+
+def get_road_route(start_lat, start_lng, end_lat, end_lng):
+    """
+    Queries OSRM driving service with caching and graceful degradation.
+    Returns real road distance and duration without fabricating speed.
+    If routing service is unavailable, provides straight-line distance with explicit notice.
+    """
+    if start_lat is None or start_lng is None or end_lat is None or end_lng is None:
+        return {
+            'success': False,
+            'is_road_route': False,
+            'distance_km': 0.0,
+            'duration_mins': None,
+            'eta_mins': None,
+            'eta_text': 'Coordinates missing',
+            'geometry': [],
+            'source': 'none',
+            'error': 'Missing coordinates'
+        }
+
+    try:
+        s_lat, s_lng = float(start_lat), float(start_lng)
+        e_lat, e_lng = float(end_lat), float(end_lng)
+    except (TypeError, ValueError):
+        return {
+            'success': False,
+            'is_road_route': False,
+            'distance_km': 0.0,
+            'duration_mins': None,
+            'eta_mins': None,
+            'eta_text': 'Invalid coordinates',
+            'geometry': [],
+            'source': 'none',
+            'error': 'Invalid coordinates'
+        }
+
+    cache_key = (round(s_lat, 4), round(s_lng, 4), round(e_lat, 4), round(e_lng, 4))
+    now_ts = time.time()
+    if cache_key in ROUTE_CACHE:
+        cached = ROUTE_CACHE[cache_key]
+        if now_ts - cached['time'] < ROUTE_CACHE_TTL:
+            return cached['data']
+
+    # Query OSRM
+    url = f"{OSRM_BASE_URL}/route/v1/driving/{s_lng},{s_lat};{e_lng},{e_lat}?overview=full&geometries=geojson"
+    req = urllib.request.Request(url, headers={'User-Agent': 'FarmMarketplace-Routing/1.0'})
+    try:
+        with urllib.request.urlopen(req, timeout=3.5) as resp:
+            data = json.loads(resp.read().decode('utf-8'))
+            if data.get('code') == 'Ok' and data.get('routes'):
+                r = data['routes'][0]
+                dist_km = round(r['distance'] / 1000.0, 2)
+                dur_mins = round(r['duration'] / 60.0, 1)
+                eta_m = max(1, round(dur_mins))
+                # Convert GeoJSON [lon, lat] to Leaflet [lat, lon]
+                leaflet_coords = [[coord[1], coord[0]] for coord in r['geometry']['coordinates']]
+                
+                result = {
+                    'success': True,
+                    'is_road_route': True,
+                    'distance_km': dist_km,
+                    'duration_mins': dur_mins,
+                    'duration_secs': round(r['duration'], 1),
+                    'eta_mins': eta_m,
+                    'eta_text': f"{dist_km} km ({eta_m} min driving ETA)",
+                    'geometry': leaflet_coords,
+                    'source': 'osrm',
+                    'error': None
+                }
+                ROUTE_CACHE[cache_key] = {'time': now_ts, 'data': result}
+                return result
+    except Exception as e:
+        print(f"OSRM routing request warning: {e}")
+
+    # Fallback to straight-line Haversine distance with explicit 'ETA Unavailable' notice
+    straight_km = round(haversine(s_lat, s_lng, e_lat, e_lng), 2)
+    fallback_result = {
+        'success': True,
+        'is_road_route': False,
+        'distance_km': straight_km,
+        'duration_mins': None,
+        'duration_secs': None,
+        'eta_mins': None,
+        'eta_text': f"{straight_km} km straight-line (Road ETA unavailable)",
+        'geometry': [[s_lat, s_lng], [e_lat, e_lng]],
+        'source': 'haversine_fallback',
+        'error': 'Routing service unavailable. Showing straight-line distance.'
+    }
+    return fallback_result
+
+def get_recommended_drivers_for_order(order):
+    """
+    Ranks drivers using transparent, explainable rules:
+    1. Driver availability (AVAILABLE prioritized; OFFLINE ranked low; BUSY flagged)
+    2. Active delivery load (0 active orders preferred)
+    3. Distance to farm (calculated using OSRM or Haversine)
+    """
+    farm_lat = order.farm.latitude if order.farm else None
+    farm_lng = order.farm.longitude if order.farm else None
+
+    driver_docs = list(mongo_db['users'].find({'role': 'driver'}))
+    ranked_drivers = []
+
+    for d in driver_docs:
+        driver_id = d.get('id', d.get('_id'))
+        driver_email = d.get('email', f'driver_{driver_id}')
+        driver_name = d.get('name') or driver_email.split('@')[0].capitalize()
+        driver_phone = d.get('phone', 'N/A')
+        
+        # Check active deliveries
+        active_count = mongo_db['orders'].count_documents({
+            'driver_id': driver_id,
+            'status': {'$in': [OrderStatus.DRIVER_ASSIGNED, OrderStatus.PICKED_UP, 'Picked Up']}
+        })
+        
+        raw_avail = d.get('availability', DriverAvailability.AVAILABLE)
+        effective_avail = DriverAvailability.BUSY if active_count > 0 else raw_avail
+
+        d_lat = d.get('last_latitude')
+        d_lng = d.get('last_longitude')
+        last_at = d.get('last_location_at') or d.get('last_active_at')
+        last_str = last_at.strftime('%b %d, %I:%M %p') if isinstance(last_at, datetime.datetime) else 'Recently'
+
+        dist_km = None
+        dur_mins = None
+        has_location = False
+        if d_lat is not None and d_lng is not None and farm_lat is not None and farm_lng is not None:
+            has_location = True
+            route_res = get_road_route(d_lat, d_lng, farm_lat, farm_lng)
+            dist_km = route_res.get('distance_km')
+            dur_mins = route_res.get('duration_mins')
+
+        # Compute transparent score: lower score = better recommendation
+        if active_count > 0:
+            is_eligible = False
+            score = 10000 + active_count * 100
+            status_badge = 'Busy'
+            badge_class = 'bg-warning text-dark'
+            reason = f"Delivering {active_count} active order(s)"
+        elif effective_avail == DriverAvailability.OFFLINE:
+            is_eligible = False
+            score = 5000 + (dist_km if dist_km else 100)
+            status_badge = 'Offline'
+            badge_class = 'bg-secondary text-white'
+            reason = f"Driver offline - {f'{dist_km} km away' if dist_km else 'Location not reported'}"
+        else: # AVAILABLE with 0 active orders!
+            is_eligible = True
+            status_badge = 'Available'
+            badge_class = 'bg-success text-white'
+            if dist_km is not None:
+                score = dist_km
+                reason = f"Nearest available driver - {dist_km} km to farm - 0 active orders"
+            else:
+                score = 50.0 # moderate ranking if location unknown
+                reason = "Available - 0 active orders (Location unverified)"
+
+        ranked_drivers.append({
+            'id': driver_id,
+            'driver_id': driver_id,
+            'name': driver_name,
+            'email': driver_email,
+            'phone': driver_phone,
+            'availability': effective_avail,
+            'active_orders': active_count,
+            'distance_km': dist_km,
+            'duration_mins': dur_mins,
+            'has_location': has_location,
+            'is_eligible': is_eligible,
+            'score': score,
+            'status_badge': status_badge,
+            'badge_class': badge_class,
+            'reason': reason,
+            'last_active': last_str,
+            'is_recommended': False
+        })
+
+    # Sort drivers by score
+    ranked_drivers.sort(key=lambda x: x['score'])
+    
+    # Mark the first eligible driver as top recommendation
+    for rd in ranked_drivers:
+        if rd['is_eligible']:
+            rd['is_recommended'] = True
+            rd['reason'] = f"Top Recommendation: {rd['reason']}"
+            break
+
+    return ranked_drivers
 
 
 class Order(BaseModel):
@@ -1909,6 +2174,161 @@ def update_order_status(order_id):
     flash(f'Unknown status update "{new_status}".', 'warning')
     return redirect(url_for('farm_orders'))
 
+@app.route('/farmer/order/assign-driver/<int:order_id>', methods=['POST'])
+@farmer_required
+def farmer_assign_driver(order_id):
+    """
+    Farmer assigns an eligible driver to a READY_FOR_PICKUP order.
+    Uses atomic MongoDB update to prevent race conditions.
+    """
+    order = Order.query.get_or_404(order_id)
+    if order.farm_id != current_user.farm.id:
+        flash('Unauthorized to assign drivers for this order.', 'danger')
+        return redirect(url_for('farm_orders'))
+        
+    try:
+        driver_id = int(request.form.get('driver_id'))
+    except (TypeError, ValueError):
+        flash('Please select a valid driver.', 'warning')
+        return redirect(url_for('farm_orders'))
+
+    driver_doc = mongo_db['users'].find_one({'_id': driver_id, 'role': 'driver'})
+    if not driver_doc:
+        flash('Driver not found.', 'danger')
+        return redirect(url_for('farm_orders'))
+
+    driver_name = driver_doc.get('name') or driver_doc.get('email', '').split('@')[0]
+
+    now = datetime.datetime.now()
+    p_otp = generate_secure_otp(6)
+    p_hash = hash_otp(p_otp)
+
+    # Atomic conditional assignment: order must be READY_FOR_PICKUP and unassigned
+    updated_doc = mongo_db['orders'].find_one_and_update(
+        {
+            '_id': order_id,
+            'farm_id': current_user.farm.id,
+            'status': {'$in': [OrderStatus.READY_FOR_PICKUP, 'Ready for Pickup']},
+            'driver_id': None
+        },
+        {
+            '$set': {
+                'status': OrderStatus.DRIVER_ASSIGNED,
+                'driver_id': driver_id,
+                'assigned_at': now,
+                'updated_at': now,
+                'pickup_otp': p_otp,
+                'pickup_otp_hash': p_hash,
+                'pickup_otp_expires_at': now + datetime.timedelta(hours=24),
+                'pickup_otp_attempts': 0
+            },
+            '$push': {
+                'status_history': {
+                    'status': OrderStatus.DRIVER_ASSIGNED,
+                    'timestamp': now.strftime('%b %d, %I:%M %p'),
+                    'iso_timestamp': now.isoformat(),
+                    'actor_id': current_user.id,
+                    'actor_role': 'farmer',
+                    'notes': f"Assigned to driver {driver_name} by farmer"
+                }
+            }
+        },
+        return_document=pymongo.ReturnDocument.AFTER
+    )
+
+    if not updated_doc:
+        flash(f'Order #{order_id} could not be assigned. It may have already been accepted or is not ready for pickup.', 'warning')
+        return redirect(url_for('farm_orders'))
+
+    # Update driver user doc to BUSY
+    mongo_db['users'].update_one(
+        {'_id': driver_id},
+        {'$set': {'availability': DriverAvailability.BUSY, 'last_active_at': now}}
+    )
+
+    assigned_order = Order.from_doc(updated_doc)
+    emit_order_status_update(assigned_order, OrderStatus.DRIVER_ASSIGNED, current_user)
+    
+    flash(f'Driver {driver_name} successfully assigned to Order #{order_id}!', 'success')
+    return redirect(url_for('farm_orders'))
+
+@app.route('/api/order/<int:order_id>/recommendations')
+@farmer_required
+def api_order_recommendations(order_id):
+    """Returns smart driver recommendations with transparent criteria for a ready order."""
+    order = Order.query.get_or_404(order_id)
+    if order.farm_id != current_user.farm.id:
+        return jsonify({'error': 'Unauthorized'}), 403
+
+    ranked = get_recommended_drivers_for_order(order)
+    return jsonify({
+        'order_id': order.id,
+        'status': order.status,
+        'drivers': ranked
+    })
+
+@app.route('/api/order/<int:order_id>/route')
+@login_required
+def api_order_route(order_id):
+    """
+    Returns actual OSRM road route geometry, distance and duration.
+    Falls back gracefully to straight-line distance if routing is unavailable.
+    """
+    order = Order.query.get_or_404(order_id)
+    
+    # Authorization check: customer of order, farm owner, assigned driver, or admin
+    is_cust = order.customer_id == current_user.id
+    is_farm = current_user.role == 'farmer' and current_user.farm and current_user.farm.id == order.farm_id
+    is_drv = current_user.role == 'driver' and (order.driver_id == current_user.id or order.status in [OrderStatus.READY_FOR_PICKUP, 'Ready for Pickup'])
+    if not (is_cust or is_farm or is_drv or current_user.role == 'admin'):
+        return jsonify({'error': 'Unauthorized to view this order route'}), 403
+
+    farm_lat = order.farm.latitude if order.farm else None
+    farm_lng = order.farm.longitude if order.farm else None
+    cust_lat = order.customer_latitude
+    cust_lng = order.customer_longitude
+    drv_lat = order.driver_latitude
+    drv_lng = order.driver_longitude
+
+    norm_status = NORMALIZED_STATUS.get(order.status, order.status)
+    
+    if norm_status in [OrderStatus.PICKED_UP, 'Picked Up'] and drv_lat and drv_lng and cust_lat and cust_lng:
+        # Live transit: from driver vehicle position to customer delivery address
+        route_data = get_road_route(drv_lat, drv_lng, cust_lat, cust_lng)
+        route_data['leg'] = 'driver_to_customer'
+    elif norm_status == OrderStatus.DRIVER_ASSIGNED and drv_lat and drv_lng and farm_lat and farm_lng:
+        # Pickup leg: from driver position to farm
+        route_data = get_road_route(drv_lat, drv_lng, farm_lat, farm_lng)
+        route_data['leg'] = 'driver_to_farm'
+    elif farm_lat and farm_lng and cust_lat and cust_lng:
+        # Origin to destination road route
+        route_data = get_road_route(farm_lat, farm_lng, cust_lat, cust_lng)
+        route_data['leg'] = 'farm_to_customer'
+    else:
+        route_data = {
+            'success': False,
+            'is_road_route': False,
+            'distance_km': 0.0,
+            'duration_mins': None,
+            'eta_mins': None,
+            'eta_text': 'Coordinates missing',
+            'geometry': [],
+            'source': 'none',
+            'error': 'Missing coordinates for route'
+        }
+
+    route_data['order_id'] = order.id
+    route_data['status'] = norm_status
+    route_data['customer_lat'] = cust_lat
+    route_data['customer_lng'] = cust_lng
+    route_data['farm_lat'] = farm_lat
+    route_data['farm_lng'] = farm_lng
+    route_data['driver_lat'] = drv_lat
+    route_data['driver_lng'] = drv_lng
+    route_data['last_location_at'] = order.last_location_at.strftime('%I:%M:%S %p') if getattr(order, 'last_location_at', None) else None
+    
+    return jsonify(route_data)
+
 # --- Delivery Driver Routes ---
 
 @app.route('/driver/dashboard')
@@ -1939,7 +2359,30 @@ def driver_dashboard():
         orders=available_orders + in_progress_orders
     )
 
+@app.route('/driver/availability', methods=['POST'])
+@driver_required
+def update_driver_availability():
+    """Allows driver to update availability to AVAILABLE, BUSY, or OFFLINE."""
+    if request.is_json:
+        data = request.get_json() or {}
+        status = str(data.get('availability', '')).strip().upper()
+    else:
+        status = request.form.get('availability', '').strip().upper()
+
+    success, err = current_user.set_availability(status)
+    if request.is_json:
+        if success:
+            return jsonify({'success': True, 'availability': status, 'message': f'Driver status is now {status}.'})
+        return jsonify({'success': False, 'message': err}), 400
+
+    if success:
+        flash(f'Your driver status is now {status}.', 'success')
+    else:
+        flash(f'Cannot change status: {err}', 'warning')
+    return redirect(url_for('driver_dashboard'))
+
 @app.route('/driver/accept/<int:order_id>', methods=['POST'])
+@app.route('/driver/order/accept/<int:order_id>', methods=['POST'])
 @driver_required
 def driver_accept_order(order_id):
     """
@@ -1989,12 +2432,29 @@ def driver_accept_order(order_id):
     )
     
     if not updated_doc:
+        if request.is_json:
+            return jsonify({'success': False, 'message': 'Order already assigned or no longer ready for pickup'}), 400
         flash(f'Order #{order_id} is no longer available or was already accepted by another driver.', 'warning')
         return redirect(url_for('driver_dashboard'))
         
+    # Mark driver user as BUSY
+    mongo_db['users'].update_one(
+        {'_id': current_user.id},
+        {'$set': {'availability': DriverAvailability.BUSY, 'last_active_at': now}}
+    )
+
     order = Order.from_doc(updated_doc)
     emit_order_status_update(order, OrderStatus.DRIVER_ASSIGNED, current_user)
     
+    if request.is_json:
+        return jsonify({
+            'success': True,
+            'order_id': order.id,
+            'status': OrderStatus.DRIVER_ASSIGNED,
+            'pickup_otp': p_otp,
+            'message': 'Delivery assignment accepted.'
+        })
+
     flash(f'You have accepted Order #{order.id}! Present your Pickup OTP to the farmer upon arrival.', 'success')
     return redirect(url_for('driver_delivery', order_id=order.id))
 
@@ -2140,13 +2600,17 @@ def handle_join_drivers_room():
     join_room('drivers_room')
     print(f'Driver {current_user.email} joined drivers_room')
 
+LAST_GPS_BROADCAST = {} # order_id -> float timestamp
+
 @socketio.on('driver_location_update')
 def handle_driver_location_update(data):
     """
     Received from the assigned driver's browser GPS.
-    Persists coordinates in MongoDB and broadcasts to the customer's room.
+    Validates coordinates, checks order status and authorization,
+    throttles broadcasts, persists in DB, and emits to order room.
     """
     if not current_user.is_authenticated or current_user.role != 'driver':
+        emit('error', {'message': 'Authentication required as driver.'})
         return
         
     try:
@@ -2154,20 +2618,65 @@ def handle_driver_location_update(data):
         lat = float(data.get('lat'))
         lng = float(data.get('lng'))
     except (TypeError, ValueError):
+        emit('error', {'message': 'Invalid coordinates format: numeric lat/lng required.'})
+        return
+
+    # Validate coordinate boundaries (-90..90, -180..180)
+    if not (-90.0 <= lat <= 90.0 and -180.0 <= lng <= 180.0):
+        emit('error', {'message': 'Invalid coordinates range: lat must be between -90 and 90, lng between -180 and 180.'})
         return
 
     order = Order.query.get(order_id)
     if not order or order.driver_id != current_user.id:
+        emit('error', {'message': 'Unauthorized: You are not assigned to this order.'})
         return  # Unauthorized to stream location for this order
 
-    # Persist latest location to database
+    # Only stream location while delivery is active! Stop once DELIVERED, CANCELLED, or FAILED
+    norm_status = NORMALIZED_STATUS.get(order.status, order.status)
+    active_statuses = [OrderStatus.DRIVER_ASSIGNED, OrderStatus.PICKED_UP]
+    if norm_status not in active_statuses:
+        emit('tracking_stopped', {
+            'order_id': order_id,
+            'status': norm_status,
+            'message': f'Tracking stopped because order is {order.status_display}.'
+        })
+        emit('error', {'message': 'Tracking is inactive for this order status'})
+        return
+
+    now_ts = time.time()
+    last_broadcast = LAST_GPS_BROADCAST.get(order_id, 0.0)
+    # Rate limit: max 1 broadcast every 1.5 seconds per order (bypassed in testing)
+    if not app.config.get('TESTING') and now_ts - last_broadcast < 1.5:
+        return
+    LAST_GPS_BROADCAST[order_id] = now_ts
+
+    now = datetime.datetime.now()
+    now_str = now.strftime('%I:%M:%S %p')
+    now_iso = now.isoformat()
+
+    # Persist latest location to orders collection
     mongo_db['orders'].update_one(
         {'_id': order_id},
         {
             '$set': {
                 'driver_latitude': lat,
                 'driver_longitude': lng,
-                'last_location_at': datetime.datetime.now()
+                'last_location_at': now,
+                'last_location_update': now_ts
+            }
+        }
+    )
+
+    # Persist driver's latest coordinates on users collection
+    mongo_db['users'].update_one(
+        {'_id': current_user.id},
+        {
+            '$set': {
+                'last_latitude': lat,
+                'last_longitude': lng,
+                'last_location_at': now,
+                'last_location_update': now_ts,
+                'last_active_at': now
             }
         }
     )
@@ -2177,10 +2686,81 @@ def handle_driver_location_update(data):
         'lat': lat,
         'lng': lng,
         'driver_name': current_user.email.split('@')[0],
-        'timestamp': datetime.datetime.now().strftime('%I:%M:%S %p')
+        'timestamp': now_str,
+        'iso_timestamp': now_iso,
+        'is_active': True
     }
     customer_room = f"order_{order_id}"
     emit('customer_location_update', location_payload, to=customer_room)  
+
+@socketio.on('request_order_location')
+def handle_request_order_location(data):
+    """
+    Called by client on page load or after reconnect to get the last known driver location,
+    timestamp, and staleness info.
+    """
+    if not current_user.is_authenticated:
+        emit('error', {'message': 'Authentication required'})
+        return
+    try:
+        order_id = int(data.get('order_id'))
+    except (TypeError, ValueError):
+        emit('error', {'message': 'Invalid order ID'})
+        return
+
+    order = Order.query.get(order_id)
+    if not order:
+        emit('error', {'message': 'Order not found'})
+        return
+
+    # Check permission
+    is_cust = order.customer_id == current_user.id
+    is_farm = current_user.role == 'farmer' and current_user.farm and current_user.farm.id == order.farm_id
+    is_drv = current_user.role == 'driver' and (order.driver_id == current_user.id or order.status in [OrderStatus.READY_FOR_PICKUP, 'Ready for Pickup'])
+    if not (is_cust or is_farm or is_drv or current_user.role == 'admin'):
+        emit('error', {'message': 'Unauthorized to request tracking for this order'})
+        return
+
+    d_lat = getattr(order, 'driver_latitude', None)
+    d_lng = getattr(order, 'driver_longitude', None)
+    last_at = getattr(order, 'last_location_at', None)
+
+    is_stale = False
+    last_str = "No updates yet"
+    seconds_ago = None
+    updated_at_ts = None
+    if last_at and isinstance(last_at, datetime.datetime):
+        seconds_ago = (datetime.datetime.now() - last_at).total_seconds()
+        is_stale = seconds_ago > 60
+        last_str = last_at.strftime('%I:%M:%S %p')
+        updated_at_ts = last_at.timestamp()
+    elif getattr(order, 'last_location_update', None):
+        ts = order.last_location_update
+        seconds_ago = time.time() - ts
+        is_stale = seconds_ago > 60
+        last_str = datetime.datetime.fromtimestamp(ts).strftime('%I:%M:%S %p')
+        updated_at_ts = ts
+
+    norm_status = NORMALIZED_STATUS.get(order.status, order.status)
+    is_active = norm_status in [OrderStatus.DRIVER_ASSIGNED, OrderStatus.PICKED_UP]
+
+    sync_payload = {
+        'order_id': order_id,
+        'lat': d_lat,
+        'lng': d_lng,
+        'driver_latitude': d_lat,
+        'driver_longitude': d_lng,
+        'last_location_at': last_str,
+        'updated_at': updated_at_ts,
+        'seconds_ago': seconds_ago,
+        'is_stale': is_stale,
+        'is_active': is_active,
+        'status': norm_status,
+        'driver_name': order.driver.email.split('@')[0] if order.driver else None
+    }
+    emit('order_location_sync', sync_payload)
+    emit('initial_location_state', sync_payload)
+  
 
 # --- Real-time Chat Handler ---
 @socketio.on('send_chat_message')
@@ -2196,11 +2776,10 @@ def handle_send_chat_message(data):
     sender_name = current_user.email.split('@')[0]
     sender_sid = request.sid 
     order_room = f"order_{order_id}"
-    
-    socketio.emit('new_chat_message', {
+    emit('new_chat_message', {
         'message': message,
         'sender': sender_name
-    }, to=order_room, skip_sid=sender_sid)
+    }, to=order_room, include_self=False)
     
     print(f"Message broadcast in {order_room} by {sender_name} (SID: {sender_sid})")
 

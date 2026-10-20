@@ -26,8 +26,12 @@
 {% endblock %}
 
 {% block content %}
-{% set in_progress_orders = orders | selectattr('driver_id', '==', current_user.id) | selectattr('status', '==', 'Picked Up') | list %}
-{% set available_orders = orders | selectattr('status', '==', 'Ready for Pickup') | list %}
+{% if not in_progress_orders is defined %}
+  {% set in_progress_orders = orders | selectattr('driver_id', '==', current_user.id) | selectattr('status', 'in', ['DRIVER_ASSIGNED', 'PICKED_UP', 'Picked Up']) | list %}
+{% endif %}
+{% if not available_orders is defined %}
+  {% set available_orders = orders | selectattr('status', 'in', ['READY_FOR_PICKUP', 'Ready for Pickup']) | list %}
+{% endif %}
 
 <div class="driver-hero">
   <div class="d-flex align-items-center gap-3">
@@ -35,7 +39,7 @@
       <i class="bi bi-truck"></i>
     </div>
     <div>
-      <p class="mb-0" style="font-size:.82rem;opacity:.8;text-transform:uppercase;letter-spacing:.05em;">Driver Dashboard</p>
+      <p class="mb-0" style="font-size:.82rem;opacity:.8;text-transform:uppercase;letter-spacing:.05em;">Driver Operations</p>
       <h3 class="mb-0">{{ current_user.email.split('@')[0] | title }}</h3>
       <p>Delivering fresh farm produce to local customers.</p>
     </div>
@@ -43,11 +47,15 @@
   <div class="d-flex flex-column align-items-end gap-2">
     {% if in_progress_orders %}
     <div class="status-indicator status-busy">
-      <span class="pulse-green" style="background:#f59e0b;"></span> On Delivery ({{ in_progress_orders|length }} active)
+      <span class="pulse-green" style="background:#f59e0b;"></span> Active Delivery ({{ in_progress_orders|length }} active)
+    </div>
+    {% elif current_user.availability == 'OFFLINE' %}
+    <div class="status-indicator bg-secondary text-white border-0">
+      <i class="bi bi-moon-stars-fill me-1"></i> Offline
     </div>
     {% else %}
     <div class="status-indicator status-available">
-      <span class="pulse-green"></span> Available for Pickup
+      <span class="pulse-green"></span> Online & Available
     </div>
     {% endif %}
     <div class="text-white small opacity-75"><i class="bi bi-envelope me-1"></i>{{ current_user.email }}</div>
@@ -57,6 +65,7 @@
 <div class="row g-4">
   <div class="col-lg-3">
     <div class="dash-sidebar">
+      <!-- Driver Profile & Work Status Card -->
       <div class="dashboard-card mb-3 p-3">
         <div class="d-flex align-items-center gap-2 mb-2">
           <div class="farm-avatar" style="width:42px;height:42px;font-size:1.25rem;background:#dbeafe;color:#1d4ed8;"><i class="bi bi-truck"></i></div>
@@ -65,18 +74,57 @@
             <span class="badge rounded-pill" style="background:#dbeafe;color:#1d4ed8;font-size:.72rem;">Delivery Driver</span>
           </div>
         </div>
-        <div class="mt-2">
+
+        <!-- Driver Availability Management -->
+        <div class="mt-3 pt-2 border-top">
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <span class="fw-bold small text-dark"><i class="bi bi-broadcast me-1 text-primary"></i> Availability</span>
+            {% if current_user.availability == 'AVAILABLE' %}
+              <span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill">Available</span>
+            {% elif current_user.availability == 'BUSY' %}
+              <span class="badge bg-warning-subtle text-warning border border-warning-subtle rounded-pill">Busy</span>
+            {% else %}
+              <span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle rounded-pill">Offline</span>
+            {% endif %}
+          </div>
+          
+          <form action="{{ url_for('update_driver_availability') }}" method="POST">
+            <div class="btn-group w-100 mb-1" role="group">
+              <button type="submit" name="availability" value="AVAILABLE" 
+                      class="btn btn-sm {% if current_user.availability == 'AVAILABLE' %}btn-success{% else %}btn-outline-success{% endif %}"
+                      {% if in_progress_orders %}disabled title="Locked to Busy while active deliveries exist"{% endif %}>
+                Online
+              </button>
+              <button type="submit" name="availability" value="BUSY" 
+                      class="btn btn-sm {% if current_user.availability == 'BUSY' %}btn-warning text-dark{% else %}btn-outline-warning{% endif %}">
+                Busy
+              </button>
+              <button type="submit" name="availability" value="OFFLINE" 
+                      class="btn btn-sm {% if current_user.availability == 'OFFLINE' %}btn-secondary{% else %}btn-outline-secondary{% endif %}"
+                      {% if in_progress_orders %}disabled title="Complete active deliveries before going offline"{% endif %}>
+                Offline
+              </button>
+            </div>
+            {% if in_progress_orders %}
+              <small class="text-muted d-block mt-1" style="font-size:0.73rem;">
+                <i class="bi bi-lock-fill text-warning me-1"></i>Locked to Busy while order active.
+              </small>
+            {% endif %}
+          </form>
+        </div>
+
+        <div class="mt-3 pt-2 border-top">
           <div class="d-flex justify-content-between text-muted small mb-1">
-            <span>Active Deliveries</span>
+            <span>Active Orders</span>
             <strong class="text-dark">{{ in_progress_orders|length }}</strong>
           </div>
           <div class="d-flex justify-content-between text-muted small mb-1">
-            <span>Available Orders</span>
+            <span>Ready for Pickup</span>
             <strong class="text-success">{{ available_orders|length }}</strong>
           </div>
           <div class="d-flex justify-content-between text-muted small">
-            <span>Delivered Today</span>
-            <strong class="text-primary" id="sidebar-delivered">—</strong>
+            <span>Completed</span>
+            <strong class="text-primary">{{ completed_orders|length if completed_orders is defined else '—' }}</strong>
           </div>
         </div>
       </div>
