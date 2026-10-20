@@ -74,35 +74,78 @@
                                 <small class="text-muted">{{ order.items | length }} items</small>
                             </td>
                             <td>
-                                <span class="status-pill status-{{ order.status | replace(' ', '-') }}">
-                                    {{ order.status }}
+                                <span class="status-pill {{ order.status_css_class }}">
+                                    {{ order.status_display }}
                                 </span>
                             </td>
                             <td class="text-end">
                                 <div class="d-inline-flex gap-1 align-items-center">
-                                    {% if order.status == 'Placed' %}
-                                    <form action="{{ url_for('update_order_status', order_id=order.id) }}" method="POST" class="d-inline">
-                                        <input type="hidden" name="status" value="Preparing">
-                                        <button type="submit" class="btn btn-success btn-sm">
-                                            <i class="bi bi-check2"></i> Confirm & Prepare
+                                    {% if order.status in ['PLACED', 'Placed'] %}
+                                    <form action="{{ url_for('farmer_accept_order', order_id=order.id) }}" method="POST" class="d-inline">
+                                        <button type="submit" class="btn btn-success btn-sm" title="Accept Order">
+                                            <i class="bi bi-check2"></i> Accept
                                         </button>
                                     </form>
-                                    <form action="{{ url_for('update_order_status', order_id=order.id) }}" method="POST" class="d-inline" onsubmit="return confirm('Reject this order?');">
-                                        <input type="hidden" name="status" value="Rejected">
-                                        <button type="submit" class="btn btn-outline-danger btn-sm">
+                                    <form action="{{ url_for('cancel_order', order_id=order.id) }}" method="POST" class="d-inline" onsubmit="return confirm('Reject and cancel this order? Produce stock will be restored.');">
+                                        <input type="hidden" name="reason" value="Rejected by farmer">
+                                        <button type="submit" class="btn btn-outline-danger btn-sm" title="Reject Order">
                                             <i class="bi bi-x-lg"></i> Reject
                                         </button>
                                     </form>
-                                    {% elif order.status == 'Preparing' %}
-                                    <form action="{{ url_for('update_order_status', order_id=order.id) }}" method="POST" class="d-inline">
-                                        <input type="hidden" name="status" value="Ready for Pickup">
+                                    {% elif order.status in ['FARMER_ACCEPTED', 'Accepted'] %}
+                                    <form action="{{ url_for('farmer_prepare_order', order_id=order.id) }}" method="POST" class="d-inline">
                                         <button type="submit" class="btn btn-primary btn-sm">
-                                            <i class="bi bi-box-seam me-1"></i> Ready for Pickup
+                                            <i class="bi bi-box-seam me-1"></i> Start Preparing
                                         </button>
                                     </form>
+                                    {% elif order.status in ['PREPARING', 'Preparing'] %}
+                                    <form action="{{ url_for('farmer_ready_order', order_id=order.id) }}" method="POST" class="d-inline">
+                                        <button type="submit" class="btn btn-success btn-sm">
+                                            <i class="bi bi-geo-alt me-1"></i> Ready for Pickup
+                                        </button>
+                                    </form>
+                                    {% elif order.status in ['DRIVER_ASSIGNED'] %}
+                                    <button type="button" class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#pickupModal{{ order.id }}">
+                                        <i class="bi bi-shield-check me-1"></i> Verify OTP
+                                    </button>
+                                    
+                                    <!-- Pickup OTP Modal -->
+                                    <div class="modal fade" id="pickupModal{{ order.id }}" tabindex="-1" aria-hidden="true">
+                                        <div class="modal-dialog modal-dialog-centered">
+                                            <div class="modal-content text-start border-0 shadow">
+                                                <div class="modal-header bg-light">
+                                                    <h5 class="modal-title fw-bold text-dark">
+                                                        <i class="bi bi-shield-check text-primary me-2"></i>Verify Driver Pickup OTP
+                                                    </h5>
+                                                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                                                </div>
+                                                <form action="{{ url_for('farmer_verify_pickup', order_id=order.id) }}" method="POST">
+                                                    <div class="modal-body py-4">
+                                                        <p class="text-muted small mb-3">
+                                                            Driver <strong>{{ order.driver.email.split('@')[0] if order.driver else 'Assigned Driver' }}</strong> has arrived for Order <strong>#{{ order.id }}</strong>. Ask for their 6-digit Pickup OTP:
+                                                        </p>
+                                                        <div class="mb-3 text-center">
+                                                            <input type="text" name="pickup_otp" class="form-control otp-input-field text-center mx-auto" 
+                                                                   placeholder="000000" maxlength="6" pattern="\d{6}" required autocomplete="off"
+                                                                   style="max-width: 200px; font-size: 1.6rem;">
+                                                        </div>
+                                                        <div class="alert alert-info py-2 small mb-0">
+                                                            <i class="bi bi-info-circle me-1"></i>This confirms produce handover and generates the customer's delivery OTP.
+                                                        </div>
+                                                    </div>
+                                                    <div class="modal-footer bg-light">
+                                                        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+                                                        <button type="submit" class="btn btn-success btn-sm fw-bold">
+                                                            <i class="bi bi-check2-circle me-1"></i> Confirm & Hand Over
+                                                        </button>
+                                                    </div>
+                                                </form>
+                                            </div>
+                                        </div>
+                                    </div>
                                     {% endif %}
                                     
-                                    <a href="{{ url_for('order_details', order_id=order.id) }}" class="btn btn-secondary btn-sm" title="View Order & Chat">
+                                    <a href="{{ url_for('order_details', order_id=order.id) }}" class="btn btn-secondary btn-sm" title="View Order & Tracking">
                                         <i class="bi bi-eye"></i>
                                     </a>
                                 </div>

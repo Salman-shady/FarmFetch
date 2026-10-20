@@ -219,26 +219,22 @@
                 <div class="text-muted" style="font-size:.75rem;">{{ order.created_at.strftime('%b %d, %I:%M %p') }}</div>
                 {% endif %}
               </div>
-              <span class="status-pill status-{{ sc }}">
-                {% if order.status == 'Placed' %}<i class="bi bi-clock-history"></i>
-                {% elif order.status == 'Preparing' %}<i class="bi bi-gear-wide-connected"></i>
-                {% elif order.status == 'Ready for Pickup' %}<i class="bi bi-box-seam"></i>
-                {% elif order.status == 'Picked Up' %}<i class="bi bi-truck"></i>{% endif %}
-                {{ order.status }}
+              <span class="status-pill {{ order.status_css_class }}">
+                {{ order.status_display }}
               </span>
             </div>
             <div class="order-timeline-mini">
               <span class="step-dot done"></span><span>-</span>
-              <span class="step-dot {{ 'done' if order.status in ['Preparing','Ready for Pickup','Picked Up'] else 'step-active' if order.status == 'Placed' else '' }}"></span><span>-</span>
-              <span class="step-dot {{ 'done' if order.status in ['Ready for Pickup','Picked Up'] else 'step-active' if order.status == 'Preparing' else '' }}"></span><span>-</span>
-              <span class="step-dot {{ 'done' if order.status == 'Picked Up' else 'step-active' if order.status == 'Ready for Pickup' else '' }}"></span>
-              <span class="ms-2">{{ order.status }}</span>
+              <span class="step-dot {{ 'done' if order.stepper_weight > 1 else 'step-active' }}"></span><span>-</span>
+              <span class="step-dot {{ 'done' if order.stepper_weight > 3 else 'step-active' if order.stepper_weight == 3 else '' }}"></span><span>-</span>
+              <span class="step-dot {{ 'done' if order.stepper_weight > 5 else 'step-active' if order.stepper_weight == 5 else '' }}"></span>
+              <span class="ms-2 fw-semibold text-dark">{{ order.status_display }}</span>
             </div>
             <div class="d-flex justify-content-between align-items-center">
               <span class="fw-bold">${{ "%.2f"|format(order.total_price) }}</span>
               <div class="d-flex gap-1">
-                {% if order.status == 'Picked Up' %}
-                <span class="badge" style="background:#f3e8ff;color:#7e22ce;font-size:.78rem;padding:.3rem .65rem;border-radius:999px;"><i class="bi bi-geo-alt-fill"></i> Live</span>
+                {% if order.status in ['PICKED_UP', 'Picked Up'] %}
+                <span class="badge" style="background:#f3e8ff;color:#7e22ce;font-size:.78rem;padding:.3rem .65rem;border-radius:999px;"><i class="bi bi-geo-alt-fill"></i> Live GPS</span>
                 {% endif %}
                 <a href="{{ url_for('order_details', order_id=order.id) }}" class="btn btn-primary btn-sm">
                   <i class="bi bi-eye me-1"></i> Track
@@ -277,11 +273,8 @@
               <td><span class="text-muted small">{{ order.created_at.strftime('%b %d, %Y') if order.created_at and order.created_at.strftime else 'Recent' }}</span></td>
               <td><span class="fw-bold">${{ "%.2f"|format(order.total_price) }}</span></td>
               <td>
-                <span class="status-pill status-{{ order.status | replace(' ', '-') }}">
-                  {% if order.status == 'Delivered' %}<i class="bi bi-check2-circle"></i>
-                  {% elif order.status == 'Rejected' %}<i class="bi bi-x-circle"></i>
-                  {% else %}<i class="bi bi-clock-history"></i>{% endif %}
-                  {{ order.status }}
+                <span class="status-pill {{ order.status_css_class }}">
+                  {{ order.status_display }}
                 </span>
               </td>
               <td class="text-end"><a href="{{ url_for('order_details', order_id=order.id) }}" class="btn btn-outline-primary btn-sm"><i class="bi bi-eye"></i></a></td>

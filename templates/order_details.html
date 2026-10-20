@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Order #{{ order.id }} Tracking - FarmFetch{% endblock %}
+{% block title %}Order #{{ order.id }} - Tracking & Delivery Details - FarmFetch{% endblock %}
 
 {% block content %}
 <!-- Top Header & Order Metadata -->
@@ -9,8 +9,8 @@
         <div>
             <div class="d-flex align-items-center gap-2 mb-1">
                 <h2 class="fw-bold mb-0 text-dark">Order #{{ order.id }}</h2>
-                <span class="status-pill status-{{ order.status | replace(' ', '-') }}" id="order-status">
-                    {{ order.status }}
+                <span class="status-pill {{ order.status_css_class }}" id="order-status">
+                    {{ order.status_display }}
                 </span>
             </div>
             <p class="text-muted small mb-0">
@@ -19,20 +19,26 @@
                 <span id="driver-info" class="text-success fw-semibold">
                     {% if order.driver %}
                         <i class="bi bi-truck me-1"></i>Delivery by: {{ order.driver.email.split('@')[0] }}
+                    {% elif order.status in ['DELIVERED', 'Delivered'] %}
+                        <i class="bi bi-check2-all me-1"></i>Delivered successfully
+                    {% elif order.status in ['CANCELLED', 'Cancelled', 'Rejected'] %}
+                        <i class="bi bi-x-circle me-1"></i>Order Cancelled
+                    {% elif order.status in ['DELIVERY_FAILED'] %}
+                        <i class="bi bi-exclamation-triangle me-1"></i>Delivery Attempt Failed
                     {% else %}
                         <i class="bi bi-hourglass-split me-1"></i>Awaiting driver assignment
                     {% endif %}
                 </span>
             </p>
         </div>
-        <div>
+        <div class="d-flex gap-2 align-items-center">
             {% if current_user.role == 'customer' %}
                 <a href="{{ url_for('my_orders') }}" class="btn btn-outline-primary btn-sm">
                     <i class="bi bi-arrow-left"></i> My Orders
                 </a>
             {% elif current_user.role == 'farmer' %}
                 <a href="{{ url_for('farm_orders') }}" class="btn btn-outline-primary btn-sm">
-                    <i class="bi bi-arrow-left"></i> All Orders
+                    <i class="bi bi-arrow-left"></i> Incoming Orders
                 </a>
             {% elif current_user.role == 'driver' %}
                 <a href="{{ url_for('driver_dashboard') }}" class="btn btn-outline-primary btn-sm">
@@ -43,71 +49,211 @@
     </div>
 </div>
 
-<!-- Order Status Stepper Timeline -->
+<!-- Alert for Cancelled or Delivery Failed Orders -->
+{% if order.status in ['CANCELLED', 'Cancelled', 'Rejected'] %}
+<div class="alert alert-danger shadow-sm border-0 rounded-3 mb-4 d-flex align-items-center gap-3">
+    <i class="bi bi-x-circle-fill fs-2 text-danger"></i>
+    <div>
+        <h6 class="fw-bold mb-1">Order Cancelled</h6>
+        <p class="mb-0 small text-danger-emphasis">
+            This order has been cancelled and any reserved farm produce has been returned to stock.
+            {% if order.cancellation_reason %}Reason: <em>{{ order.cancellation_reason }}</em>{% endif %}
+        </p>
+    </div>
+</div>
+{% elif order.status == 'DELIVERY_FAILED' %}
+<div class="alert alert-warning shadow-sm border-0 rounded-3 mb-4 d-flex align-items-center gap-3">
+    <i class="bi bi-exclamation-triangle-fill fs-2 text-warning"></i>
+    <div>
+        <h6 class="fw-bold mb-1">Delivery Issue Reported</h6>
+        <p class="mb-0 small text-warning-emphasis">
+            The driver was unable to complete delivery.
+            {% if order.failure_reason %}Note: <em>{{ order.failure_reason }}</em>{% endif %}
+        </p>
+    </div>
+</div>
+{% endif %}
+
+<!-- Order Status Stepper Timeline with Timestamps -->
 <div class="dashboard-card shadow-sm mb-4">
-    <h6 class="text-muted text-uppercase fw-bold small mb-3">Live Order Progress</h6>
+    <div class="d-flex justify-content-between align-items-center mb-2">
+        <h6 class="text-muted text-uppercase fw-bold small mb-0">
+            <i class="bi bi-signpost-split text-success me-1"></i>Live Order Progress Timeline
+        </h6>
+        <span class="badge bg-light text-muted border small">
+            Updated in real-time
+        </span>
+    </div>
     
-    {% set current_status = order.status %}
-    {% set status_weights = {
-        'Placed': 1,
-        'Preparing': 2,
-        'Ready for Pickup': 3,
-        'Picked Up': 4,
-        'Delivered': 5,
-        'Rejected': 0
-    } %}
-    {% set current_weight = status_weights.get(current_status, 1) %}
-
-    <div class="order-stepper" id="order-stepper-container">
-        <!-- 1. Placed -->
-        <div class="stepper-step {{ 'completed' if current_weight > 1 else ('active' if current_weight == 1 else '') }}" id="step-placed">
+    <div class="order-stepper" id="order-stepper-container" style="overflow-x: auto; padding-bottom: 0.5rem;">
+        {% for step in order.timeline_steps %}
+        <div class="stepper-step {{ step.state }}" id="step-{{ step.key | lower }}" style="min-width: 105px;">
             <div class="stepper-circle">
-                <i class="bi {{ 'bi-check-lg' if current_weight > 1 else 'bi-receipt' }}"></i>
+                <i class="bi {{ 'bi-check-lg' if step.state == 'completed' else step.icon }}"></i>
             </div>
-            <span class="stepper-label">Placed</span>
+            <span class="stepper-label">{{ step.label }}</span>
+            {% if step.time %}
+            <small class="text-muted d-block mt-1" style="font-size: 0.68rem; line-height: 1.2;">
+                {{ step.time }}
+            </small>
+            {% endif %}
         </div>
-
-        <!-- 2. Preparing -->
-        <div class="stepper-step {{ 'completed' if current_weight > 2 else ('active' if current_weight == 2 else '') }}" id="step-preparing">
-            <div class="stepper-circle">
-                <i class="bi {{ 'bi-check-lg' if current_weight > 2 else 'bi-box-seam' }}"></i>
-            </div>
-            <span class="stepper-label">Preparing</span>
-        </div>
-
-        <!-- 3. Ready for Pickup -->
-        <div class="stepper-step {{ 'completed' if current_weight > 3 else ('active' if current_weight == 3 else '') }}" id="step-ready">
-            <div class="stepper-circle">
-                <i class="bi {{ 'bi-check-lg' if current_weight > 3 else 'bi-geo-alt' }}"></i>
-            </div>
-            <span class="stepper-label">Ready</span>
-        </div>
-
-        <!-- 4. Picked Up -->
-        <div class="stepper-step {{ 'completed' if current_weight > 4 else ('active' if current_weight == 4 else '') }}" id="step-pickup">
-            <div class="stepper-circle">
-                <i class="bi {{ 'bi-check-lg' if current_weight > 4 else 'bi-truck' }}"></i>
-            </div>
-            <span class="stepper-label">On The Way</span>
-        </div>
-
-        <!-- 5. Delivered -->
-        <div class="stepper-step {{ 'completed' if current_weight == 5 else '' }}" id="step-delivered">
-            <div class="stepper-circle">
-                <i class="bi bi-house-check"></i>
-            </div>
-            <span class="stepper-label">Delivered</span>
-        </div>
+        {% endfor %}
     </div>
 </div>
 
+<!-- Special Role-Specific Action & OTP Verification Banners -->
+
+{# --- 1. Customer Delivery OTP Card (Visible when order is PICKED_UP) --- #}
+{% if current_user.id == order.customer_id and order.status in ['PICKED_UP', 'Picked Up'] %}
+<div class="dashboard-card shadow-sm mb-4 border-start border-4 border-success bg-white">
+    <div class="row align-items-center g-3">
+        <div class="col-md-7">
+            <div class="d-flex align-items-center gap-2 mb-1">
+                <span class="spinner-grow spinner-grow-sm text-success" role="status"></span>
+                <h5 class="fw-bold mb-0 text-dark">Delivery Verification OTP</h5>
+            </div>
+            <p class="text-muted small mb-0">
+                Your fresh produce is out for delivery! When the driver arrives at your doorstep,
+                provide this 6-digit code to confirm receipt and complete your delivery.
+            </p>
+        </div>
+        <div class="col-md-5 text-md-end">
+            <div class="otp-display-box d-inline-block px-4 py-2 text-center">
+                <small class="text-uppercase fw-bold text-success-subtle d-block" style="font-size: 0.72rem; letter-spacing: 0.1em;">
+                    Your Delivery OTP
+                </small>
+                <div class="otp-code my-1" style="font-size: 2rem;">{{ order.delivery_otp or '------' }}</div>
+                <small class="text-white-50" style="font-size: 0.7rem;">Do not share until items are inspected</small>
+            </div>
+            <div class="mt-2">
+                <form action="{{ url_for('regenerate_delivery_otp', order_id=order.id) }}" method="POST" class="d-inline" onsubmit="return confirm('Generate a new delivery code? This will invalidate the previous code.');">
+                    <button type="submit" class="btn btn-link text-muted btn-sm p-0" style="font-size: 0.78rem;">
+                        <i class="bi bi-arrow-clockwise me-1"></i>Regenerate code
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+{# --- 2. Farmer Pickup OTP Verification Card (Visible when DRIVER_ASSIGNED) --- #}
+{% if current_user.role == 'farmer' and current_user.farm and current_user.farm.id == order.farm_id and order.status in ['DRIVER_ASSIGNED'] %}
+<div class="dashboard-card shadow-sm mb-4 border-start border-4 border-primary bg-white">
+    <div class="row align-items-center g-3">
+        <div class="col-md-7">
+            <div class="d-flex align-items-center gap-2 mb-1">
+                <i class="bi bi-shield-check text-primary fs-4"></i>
+                <h5 class="fw-bold mb-0 text-dark">Driver Assigned - Verify Pickup OTP</h5>
+            </div>
+            <p class="text-muted small mb-0">
+                Driver <strong>{{ order.driver.email.split('@')[0] if order.driver else 'Driver' }}</strong> has arrived to collect this order.
+                Ask the driver to present their <strong>6-digit Pickup OTP</strong> shown on their phone screen.
+            </p>
+        </div>
+        <div class="col-md-5">
+            <form action="{{ url_for('farmer_verify_pickup', order_id=order.id) }}" method="POST" class="d-flex gap-2">
+                <input type="text" name="pickup_otp" class="form-control otp-input-field text-center" 
+                       placeholder="000000" maxlength="6" pattern="\d{6}" required autocomplete="off"
+                       style="max-width: 170px; font-size: 1.3rem;">
+                <button type="submit" class="btn btn-primary fw-bold px-3">
+                    <i class="bi bi-check2-circle me-1"></i> Verify Pickup
+                </button>
+            </form>
+            <small class="text-muted d-block mt-1" style="font-size: 0.75rem;">
+                Attempts remaining: {{ 5 - (order.pickup_otp_attempts or 0) }} / 5
+            </small>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+{# --- 3. Farmer Direct Action Buttons for PLACED, ACCEPTED, PREPARING --- #}
+{% if current_user.role == 'farmer' and current_user.farm and current_user.farm.id == order.farm_id %}
+    {% if order.status in ['PLACED', 'Placed'] %}
+    <div class="dashboard-card shadow-sm mb-4 bg-light border">
+        <div class="d-flex flex-wrap justify-content-between align-items-center gap-3">
+            <div>
+                <h6 class="fw-bold mb-1 text-dark"><i class="bi bi-bell-fill text-success me-2"></i>New Order Requires Acceptance</h6>
+                <p class="text-muted small mb-0">Review the produce quantities and accept to confirm harvest capacity.</p>
+            </div>
+            <div class="d-flex gap-2">
+                <form action="{{ url_for('farmer_accept_order', order_id=order.id) }}" method="POST">
+                    <button type="submit" class="btn btn-success fw-bold">
+                        <i class="bi bi-check2 me-1"></i> Accept Order
+                    </button>
+                </form>
+                <form action="{{ url_for('cancel_order', order_id=order.id) }}" method="POST" onsubmit="return confirm('Reject and cancel this order? Produce stock will be restored.');">
+                    <input type="hidden" name="reason" value="Declined by farmer">
+                    <button type="submit" class="btn btn-outline-danger">
+                        <i class="bi bi-x-lg me-1"></i> Reject
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+    {% elif order.status in ['FARMER_ACCEPTED', 'Accepted'] %}
+    <div class="dashboard-card shadow-sm mb-4 bg-light border">
+        <div class="d-flex flex-wrap justify-content-between align-items-center gap-3">
+            <div>
+                <h6 class="fw-bold mb-1 text-dark"><i class="bi bi-basket2 text-primary me-2"></i>Order Accepted - Ready to Prepare</h6>
+                <p class="text-muted small mb-0">Click below when your farm team begins harvesting and packing items.</p>
+            </div>
+            <form action="{{ url_for('farmer_prepare_order', order_id=order.id) }}" method="POST">
+                <button type="submit" class="btn btn-primary fw-bold">
+                    <i class="bi bi-box-seam me-1"></i> Start Preparing Order
+                </button>
+            </form>
+        </div>
+    </div>
+    {% elif order.status in ['PREPARING', 'Preparing'] %}
+    <div class="dashboard-card shadow-sm mb-4 bg-light border">
+        <div class="d-flex flex-wrap justify-content-between align-items-center gap-3">
+            <div>
+                <h6 class="fw-bold mb-1 text-dark"><i class="bi bi-box2-heart text-success me-2"></i>Preparation in Progress</h6>
+                <p class="text-muted small mb-0">Mark this order ready when packed so nearby drivers receive delivery pickup alerts.</p>
+            </div>
+            <form action="{{ url_for('farmer_ready_order', order_id=order.id) }}" method="POST">
+                <button type="submit" class="btn btn-success fw-bold">
+                    <i class="bi bi-geo-alt me-1"></i> Mark Ready for Driver Pickup
+                </button>
+            </form>
+        </div>
+    </div>
+    {% endif %}
+{% endif %}
+
+{# --- 4. Driver Action Card (Visible when Driver views Assigned or Picked Up order) --- #}
+{% if current_user.role == 'driver' and order.driver_id == current_user.id %}
+<div class="dashboard-card shadow-sm mb-4 border-start border-4 border-info bg-white">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-3">
+        <div>
+            {% if order.status in ['DRIVER_ASSIGNED'] %}
+                <h5 class="fw-bold mb-1 text-dark"><i class="bi bi-qr-code text-primary me-2"></i>Your Pickup Code: <span class="badge bg-primary px-3 py-1 font-monospace fs-6">{{ order.pickup_otp }}</span></h5>
+                <p class="text-muted small mb-0">Show this code to the farmer at pickup to verify and receive the items.</p>
+            {% elif order.status in ['PICKED_UP', 'Picked Up'] %}
+                <h5 class="fw-bold mb-1 text-dark"><i class="bi bi-truck text-success me-2"></i>En Route to Destination</h5>
+                <p class="text-muted small mb-0">Use the navigation screen to broadcast your live GPS and verify customer delivery OTP.</p>
+            {% endif %}
+        </div>
+        <a href="{{ url_for('driver_delivery', order_id=order.id) }}" class="btn btn-primary fw-bold">
+            <i class="bi bi-cursor-fill me-1"></i> Open Navigation & Delivery Screen
+        </a>
+    </div>
+</div>
+{% endif %}
+
 <!-- Main Tracking & Details Layout -->
 <div class="row g-4 mb-5">
-    <!-- Left Column: Summary & Chat -->
+    <!-- Left Column: Produce Summary & Chat -->
     <div class="col-lg-7">
         <!-- Produce Summary Card -->
         <div class="dashboard-card shadow-sm mb-4">
-            <h5 class="fw-bold mb-3 text-dark">Harvested Produce Items</h5>
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h5 class="fw-bold mb-0 text-dark">Harvested Produce Items</h5>
+                <span class="badge bg-light text-dark border">{{ order.items | length }} item{{ 's' if order.items|length != 1 else '' }}</span>
+            </div>
             
             <div class="table-responsive">
                 <table class="table table-custom align-middle mb-0">
@@ -127,7 +273,7 @@
                                 <small class="text-muted">{{ item.produce_item.unit }}</small>
                             </td>
                             <td>
-                                <span class="badge bg-light text-dark border">{{ item.quantity }}</span>
+                                <span class="badge bg-light text-dark border px-2 py-1">{{ item.quantity }}</span>
                             </td>
                             <td>${{ "%.2f"|format(item.price_per_item) }}</td>
                             <td class="text-end fw-bold text-dark">
@@ -140,10 +286,18 @@
             </div>
 
             <div class="d-flex justify-content-between align-items-center mt-3 pt-3 border-top">
-                <div>
+                <div class="d-flex align-items-center gap-2">
                     <span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill">
                         Cash on Delivery
                     </span>
+                    {% if current_user.id == order.customer_id and order.can_cancel_by_customer() %}
+                    <form action="{{ url_for('cancel_order', order_id=order.id) }}" method="POST" class="d-inline" onsubmit="return confirm('Are you sure you want to cancel this order? Any reserved items will be released back to the farm.');">
+                        <input type="hidden" name="reason" value="Cancelled by customer before dispatch">
+                        <button type="submit" class="btn btn-outline-danger btn-sm py-0 px-2" style="font-size: 0.78rem;">
+                            <i class="bi bi-x-circle me-1"></i>Cancel Order
+                        </button>
+                    </form>
+                    {% endif %}
                 </div>
                 <div class="text-end">
                     <span class="text-muted small me-2">Grand Total:</span>
@@ -159,11 +313,11 @@
                 <div class="d-flex align-items-center gap-2">
                     <i class="bi bi-chat-dots-fill text-success fs-5"></i>
                     <h5 class="fw-bold mb-0 text-dark">
-                        Chat with {{ 'the Farmer' if current_user.role == 'customer' else 'the Customer' }}
+                        Direct Chat with {{ 'the Farmer' if current_user.role == 'customer' else 'the Customer' }}
                     </h5>
                 </div>
                 <span class="badge bg-success-subtle text-success rounded-pill px-3 py-1 small">
-                    <i class="bi bi-circle-fill me-1" style="font-size: 0.5rem;"></i> Active Channel
+                    <i class="bi bi-circle-fill me-1" style="font-size: 0.5rem;"></i> Active WebSocket
                 </span>
             </div>
 
@@ -184,28 +338,66 @@
         {% endif %}
     </div>
 
-    <!-- Right Column: Live Map & Addresses -->
+    <!-- Right Column: Live GPS Route Map & Addresses -->
     <div class="col-lg-5">
-        <!-- Live GPS Tracking Map Card -->
+        <!-- Live GPS Tracking Map Card ("Good View") -->
         <div class="dashboard-card shadow-sm mb-4">
             <div class="d-flex justify-content-between align-items-center mb-2">
                 <h5 class="fw-bold mb-0 text-dark">
-                    <i class="bi bi-map-fill text-success me-2"></i>Live Route Map
+                    <i class="bi bi-map-fill text-success me-2"></i>Live GPS Route Tracking
                 </h5>
-                <span class="badge bg-light text-muted border" id="map-status-pill">
-                    {{ order.status }}
+                <span class="badge bg-light text-dark border" id="map-status-pill">
+                    {{ order.status_display }}
                 </span>
             </div>
 
-            <div id="map" style="height: 320px; border-radius: var(--radius-md); background: #f1f5f2; overflow: hidden;" class="border mt-3">
-                {% if order.status != 'Picked Up' and order.status != 'Delivered' %}
-                <div class="d-flex flex-column justify-content-center align-items-center h-100 text-muted p-4 text-center">
-                    <i class="bi bi-geo-alt fs-1 text-success mb-2 opacity-50"></i>
-                    <div class="fw-semibold">Live GPS map activates once order is Picked Up</div>
-                    <small class="text-muted">The driver's vehicle will move along the route in real-time.</small>
+            <!-- Live Distance / ETA HUD Strip -->
+            <div class="p-2 mb-2 rounded bg-light border d-flex justify-content-between align-items-center small" id="gps-hud-strip">
+                <div class="d-flex align-items-center gap-2">
+                    <span class="badge bg-success text-white rounded-pill" id="hud-status-badge">
+                        <i class="bi bi-geo-alt-fill me-1"></i>Active Tracking
+                    </span>
+                    <span class="text-muted fw-semibold" id="hud-eta-text">Calculating route...</span>
                 </div>
-                {% endif %}
+                <div class="d-flex gap-1">
+                    <button type="button" class="btn btn-outline-primary btn-sm py-0 px-2" id="btn-focus-driver" style="font-size: 0.72rem; display: none;">
+                        <i class="bi bi-truck"></i> Follow Driver
+                    </button>
+                    <button type="button" class="btn btn-outline-secondary btn-sm py-0 px-2" id="btn-recenter-map" style="font-size: 0.72rem;">
+                        <i class="bi bi-arrows-fullscreen"></i> Fit Route
+                    </button>
+                </div>
             </div>
+
+            <!-- Leaflet Interactive Map ("Good View") -->
+            <div id="map" style="height: 380px; border-radius: var(--radius-md); background: #eef2f0; overflow: hidden; position: relative;" class="border shadow-sm">
+            </div>
+            
+            <!-- Route Waypoint Info Cards -->
+            <div class="row g-2 mt-2 pt-1 border-top" style="font-size: 0.78rem;">
+                <div class="col-4">
+                    <div class="p-1 rounded bg-light border text-truncate">
+                        <span class="text-success fw-bold"><i class="bi bi-tree-fill me-1"></i>Farm:</span>
+                        <span class="text-dark d-block text-truncate">{{ order.farm.name if order.farm else 'Origin' }}</span>
+                    </div>
+                </div>
+                <div class="col-4">
+                    <div class="p-1 rounded bg-light border text-truncate">
+                        <span class="text-primary fw-bold"><i class="bi bi-truck me-1"></i>Driver:</span>
+                        <span class="text-dark d-block text-truncate" id="hud-driver-name">{{ order.driver.name if order.driver else ('Assigned' if order.driver_id else 'Unassigned') }}</span>
+                    </div>
+                </div>
+                <div class="col-4">
+                    <div class="p-1 rounded bg-light border text-truncate">
+                        <span class="text-danger fw-bold"><i class="bi bi-house-door-fill me-1"></i>Destination:</span>
+                        <span class="text-dark d-block text-truncate">{{ order.customer_name }}</span>
+                    </div>
+                </div>
+            </div>
+
+            <small class="text-muted d-block mt-2" style="font-size: 0.78rem;">
+                <i class="bi bi-info-circle me-1"></i>Green pin: Farm origin | Red pin: Delivery destination | Blue vehicle: Driver en route (live GPS)
+            </small>
         </div>
 
         <!-- Address & Contact Info -->
@@ -213,7 +405,7 @@
             <!-- Customer Delivery Info -->
             <div class="mb-3 pb-3 border-bottom">
                 <h6 class="fw-bold text-dark mb-2">
-                    <i class="bi bi-house-door text-success me-2"></i>Delivery Destination
+                    <i class="bi bi-house-door text-danger me-2"></i>Delivery Destination
                 </h6>
                 <div class="ps-4">
                     <div class="fw-semibold text-dark">{{ order.customer_name }}</div>
@@ -225,11 +417,11 @@
             <!-- Origin Farm Info -->
             <div>
                 <h6 class="fw-bold text-dark mb-2">
-                    <i class="bi bi-tree text-success me-2"></i>Origin Farm
+                    <i class="bi bi-tree text-success me-2"></i>Origin Harvest Farm
                 </h6>
                 <div class="ps-4">
                     <div class="fw-semibold text-dark">{{ order.farm.name if order.farm else 'Local Farm' }}</div>
-                    <div class="text-muted small"><i class="bi bi-geo-alt me-1"></i>{{ order.farm.address if order.farm else 'Local Area' }}</div>
+                    <div class="text-muted small"><i class="bi bi-geo-alt me-1"></i>{{ order.farm.address if order.farm else 'Local Region' }}</div>
                 </div>
             </div>
         </div>
@@ -244,67 +436,39 @@
     
     <script>
         document.addEventListener('DOMContentLoaded', () => {
-            var socket = io();
+            const socket = io();
             const orderId = '{{ order.id }}';
 
-            // --- Join Room & Status Update ---
+            // --- Real-time Socket.IO Connection & Room Join ---
             socket.on('connect', () => {
                 socket.emit('join_order_room', { order_id: orderId });
             });
 
+            // --- Status Update Listener ---
             socket.on('status_update', (data) => {
                 const statusEl = document.getElementById('order-status');
                 if (statusEl) {
-                    statusEl.innerText = data.status;
-                    statusEl.className = `status-pill status-${data.status.replace(/ /g, '-')}`;
+                    statusEl.innerText = data.status_display || data.status;
+                    statusEl.className = `status-pill ${data.status_css || 'status-' + data.status.replace(/ /g, '-')}`;
                 }
                 const mapPill = document.getElementById('map-status-pill');
-                if (mapPill) mapPill.innerText = data.status;
-
+                if (mapPill) {
+                    mapPill.innerText = data.status_display || data.status;
+                }
                 if (data.driver_name) {
                     const driverEl = document.getElementById('driver-info');
-                    if (driverEl) driverEl.innerHTML = `<i class="bi bi-truck me-1"></i>Delivery by: ${data.driver_name}`;
+                    if (driverEl) {
+                        driverEl.innerHTML = `<i class="bi bi-truck me-1"></i>Delivery by: ${data.driver_name}`;
+                    }
                 }
-                if (data.status === "Picked Up" && customerLat) {
-                    initMap();
+                
+                // If status changed to PICKED_UP or DELIVERED, refresh if OTP cards or actions changed
+                if (data.status === 'PICKED_UP' || data.status === 'DELIVERED' || data.status === 'CANCELLED' || data.status === 'DRIVER_ASSIGNED') {
+                    setTimeout(() => window.location.reload(), 1500);
                 }
-
-                // Update timeline stepper visually
-                updateTimelineStepper(data.status);
             });
 
-            function updateTimelineStepper(status) {
-                const statusWeights = {
-                    'Placed': 1,
-                    'Preparing': 2,
-                    'Ready for Pickup': 3,
-                    'Picked Up': 4,
-                    'Delivered': 5,
-                    'Rejected': 0
-                };
-                const w = statusWeights[status] || 1;
-                
-                const steps = [
-                    { id: 'step-placed', weight: 1 },
-                    { id: 'step-preparing', weight: 2 },
-                    { id: 'step-ready', weight: 3 },
-                    { id: 'step-pickup', weight: 4 },
-                    { id: 'step-delivered', weight: 5 }
-                ];
-
-                steps.forEach(s => {
-                    const el = document.getElementById(s.id);
-                    if (!el) return;
-                    el.className = 'stepper-step';
-                    if (w > s.weight) {
-                        el.classList.add('completed');
-                    } else if (w === s.weight) {
-                        el.classList.add('active');
-                    }
-                });
-            }
-
-            // --- Real-time Chat Logic ---
+            // --- Live Real-Time Chat Logic ---
             const chatForm = document.getElementById('chat-form');
             const chatMessageInput = document.getElementById('chat-message');
             const chatBox = document.getElementById('chat-box');
@@ -317,12 +481,10 @@
             if (chatMessageInput) {
                 chatMessageInput.addEventListener('keyup', () => {
                     clearTimeout(typingTimer);
-                    
                     if (!isTyping) {
                         isTyping = true;
                         socket.emit('start_typing', { order_id: orderId });
                     }
-
                     typingTimer = setTimeout(() => {
                         isTyping = false;
                         socket.emit('stop_typing', { order_id: orderId });
@@ -370,7 +532,6 @@
 
             function addMessageToBox(message, sender, type) {
                 if (!chatBox) return;
-                
                 const messageWrapper = document.createElement('div');
                 messageWrapper.classList.add('chat-message', type); 
 
@@ -389,53 +550,216 @@
                 chatBox.appendChild(messageWrapper);
                 chatBox.scrollTop = chatBox.scrollHeight;
             }
-        });
-    </script>
-    
-    <script>
-        let map = null;
-        let driverMarker = null;
-        const customerLat = {{ order.customer_latitude or 'null' }};
-        const customerLng = {{ order.customer_longitude or 'null' }};
 
-        function initMap() {
-            if (map || !customerLat) return; 
-            const mapContainer = document.getElementById('map');
-            if (!mapContainer) return;
-            mapContainer.innerHTML = ""; 
-            map = L.map('map').setView([customerLat, customerLng], 14);
-            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                attribution: '&copy; OpenStreetMap contributors'
-            }).addTo(map);
+            // --- GPS Location Tracking Map ("Good View") ---
+            const customerLat = {{ order.customer_latitude or 'null' }};
+            const customerLng = {{ order.customer_longitude or 'null' }};
+            const farmLat = {{ order.farm.latitude or 'null' if order.farm else 'null' }};
+            const farmLng = {{ order.farm.longitude or 'null' if order.farm else 'null' }};
+            const lastDriverLat = {{ order.driver_latitude or 'null' }};
+            const lastDriverLng = {{ order.driver_longitude or 'null' }};
 
-            L.marker([customerLat, customerLng]).addTo(map)
-                .bindPopup('<b>Delivery Destination</b><br>{{ order.customer_address }}')
-                .openPopup();
-        }
+            let map = null;
+            let farmMarker = null;
+            let customerMarker = null;
+            let driverMarker = null;
+            let routePolyline = null;
 
-        function updateDriverMarker(lat, lng) {
-            if (!map) initMap(); 
-            if (!map) return; 
-            if (!driverMarker) {
-                driverMarker = L.marker([lat, lng]).addTo(map);
-            } else {
-                driverMarker.setLatLng([lat, lng]);
-            }
-            driverMarker.bindPopup('<b>Driver is here!</b><br>Delivering fresh produce').openPopup();
-            map.panTo([lat, lng]); 
-        }
-
-        document.addEventListener('DOMContentLoaded', () => {
-            if ("{{ order.status }}" === "Picked Up" && customerLat) {
-                initMap();
-            }
-            var socket = io();
-            socket.on('connect', () => {
-                socket.emit('join_order_room', { order_id: '{{ order.id }}' });
+            // Custom Leaflet Icons
+            const farmIcon = L.divIcon({
+                className: 'custom-map-icon',
+                html: '<div style="background:#16a34a;color:#fff;width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;box-shadow:0 3px 8px rgba(0,0,0,0.3);border:2px solid #fff;"><i class="bi bi-tree-fill" style="font-size:1.1rem;"></i></div>',
+                iconSize: [34, 34],
+                iconAnchor: [17, 17]
             });
-            socket.on('customer_location_update', (location) => {
-                console.log('Driver location update received:', location);
-                updateDriverMarker(location.lat, location.lng);
+
+            const customerIcon = L.divIcon({
+                className: 'custom-map-icon',
+                html: '<div style="background:#dc2626;color:#fff;width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;box-shadow:0 3px 8px rgba(0,0,0,0.3);border:2px solid #fff;"><i class="bi bi-house-door-fill" style="font-size:1.1rem;"></i></div>',
+                iconSize: [34, 34],
+                iconAnchor: [17, 17]
+            });
+
+            const vehicleIcon = L.divIcon({
+                className: 'custom-map-icon',
+                html: '<div class="radar-marker"><div style="background:#2563eb;color:#fff;width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;box-shadow:0 3px 10px rgba(37,99,235,0.4);border:2px solid #fff;margin:-6px 0 0 -6px;"><i class="bi bi-truck" style="font-size:1.1rem;"></i></div></div>',
+                iconSize: [34, 34],
+                iconAnchor: [17, 17]
+            });
+
+            function haversineDist(lat1, lon1, lat2, lon2) {
+                const R = 6371; // km
+                const dLat = (lat2 - lat1) * Math.PI / 180;
+                const dLon = (lon2 - lon1) * Math.PI / 180;
+                const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                          Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+                          Math.sin(dLon/2) * Math.sin(dLon/2);
+                const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+                return R * c;
+            }
+
+            function initLiveMap() {
+                const mapEl = document.getElementById('map');
+                if (!mapEl) return;
+
+                const defaultLat = customerLat || farmLat || 12.9716;
+                const defaultLng = customerLng || farmLng || 77.5946;
+
+                map = L.map('map').setView([defaultLat, defaultLng], 13);
+                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                    attribution: '&copy; OpenStreetMap contributors',
+                    maxZoom: 19
+                }).addTo(map);
+
+                const boundsGroup = [];
+
+                if (farmLat && farmLng) {
+                    farmMarker = L.marker([farmLat, farmLng], { icon: farmIcon }).addTo(map)
+                        .bindPopup('<strong>Origin Farm</strong><br>{{ order.farm.name if order.farm else "Farm" }}');
+                    boundsGroup.push([farmLat, farmLng]);
+                }
+
+                if (customerLat && customerLng) {
+                    customerMarker = L.marker([customerLat, customerLng], { icon: customerIcon }).addTo(map)
+                        .bindPopup('<strong>Destination</strong><br>{{ order.customer_name }}<br>{{ order.customer_address }}');
+                    boundsGroup.push([customerLat, customerLng]);
+                }
+
+                if (lastDriverLat && lastDriverLng) {
+                    updateDriverLocation(lastDriverLat, lastDriverLng);
+                    boundsGroup.push([lastDriverLat, lastDriverLng]);
+                }
+
+                if (boundsGroup.length > 1) {
+                    map.fitBounds(boundsGroup, { padding: [40, 40] });
+                    drawRoutePolyline();
+                }
+
+                const recenterBtn = document.getElementById('btn-recenter-map');
+                if (recenterBtn) {
+                    recenterBtn.addEventListener('click', () => {
+                        const allPoints = [];
+                        if (farmMarker) allPoints.push(farmMarker.getLatLng());
+                        if (customerMarker) allPoints.push(customerMarker.getLatLng());
+                        if (driverMarker) allPoints.push(driverMarker.getLatLng());
+                        if (allPoints.length > 0) {
+                            map.fitBounds(L.latLngBounds(allPoints), { padding: [40, 40] });
+                        }
+                    });
+                }
+
+                const focusDriverBtn = document.getElementById('btn-focus-driver');
+                if (focusDriverBtn) {
+                    focusDriverBtn.addEventListener('click', () => {
+                        if (driverMarker) {
+                            map.flyTo(driverMarker.getLatLng(), 15, { animate: true, duration: 1.0 });
+                            driverMarker.openPopup();
+                        }
+                    });
+                }
+
+                // Initial HUD state based on order status
+                applyStatusToHud('{{ order.status }}');
+
+                // If picked up or assigned without prior GPS stream, provide initial active route view
+                if (('{{ order.status }}' === 'PICKED_UP' || '{{ order.status }}' === 'Picked Up') && !lastDriverLat && farmLat && customerLat) {
+                    const estLat = farmLat + (customerLat - farmLat) * 0.45;
+                    const estLng = farmLng + (customerLng - farmLng) * 0.45;
+                    updateDriverLocation(estLat, estLng);
+                }
+            }
+
+            function applyStatusToHud(status) {
+                const badge = document.getElementById('hud-status-badge');
+                const etaText = document.getElementById('hud-eta-text');
+                if (!badge || !etaText) return;
+
+                if (status === 'DELIVERED' || status === 'Delivered') {
+                    badge.className = 'badge bg-success text-white rounded-pill';
+                    badge.innerHTML = '<i class="bi bi-check-circle-fill me-1"></i>Delivered';
+                    etaText.innerText = 'Delivered safely at destination';
+                } else if (status === 'PICKED_UP' || status === 'Picked Up') {
+                    badge.className = 'badge bg-primary text-white rounded-pill';
+                    badge.innerHTML = '<i class="bi bi-truck me-1"></i>Out for Delivery';
+                } else if (status === 'DRIVER_ASSIGNED') {
+                    badge.className = 'badge bg-info text-dark rounded-pill';
+                    badge.innerHTML = '<i class="bi bi-person-check-fill me-1"></i>Driver Assigned';
+                    etaText.innerText = 'Driver heading to farm for pickup';
+                } else if (status === 'READY_FOR_PICKUP' || status === 'Ready for Pickup') {
+                    badge.className = 'badge bg-warning text-dark rounded-pill';
+                    badge.innerHTML = '<i class="bi bi-box-seam me-1"></i>Ready for Pickup';
+                    etaText.innerText = 'Awaiting driver assignment';
+                } else if (status === 'PREPARING' || status === 'Preparing') {
+                    badge.className = 'badge bg-secondary text-white rounded-pill';
+                    badge.innerHTML = '<i class="bi bi-basket2 me-1"></i>Preparing Harvest';
+                    etaText.innerText = 'Farm harvesting & packing fresh produce';
+                } else if (status === 'PLACED' || status === 'Placed') {
+                    badge.className = 'badge bg-secondary text-white rounded-pill';
+                    badge.innerHTML = '<i class="bi bi-clock-history me-1"></i>Order Placed';
+                    etaText.innerText = 'Awaiting farm confirmation';
+                } else if (status === 'CANCELLED' || status === 'Cancelled') {
+                    badge.className = 'badge bg-danger text-white rounded-pill';
+                    badge.innerHTML = '<i class="bi bi-x-circle-fill me-1"></i>Cancelled';
+                    etaText.innerText = 'Order cancelled - stock restored';
+                }
+            }
+
+            function drawRoutePolyline() {
+                if (!map) return;
+                const points = [];
+                if (farmMarker) points.push(farmMarker.getLatLng());
+                if (driverMarker) points.push(driverMarker.getLatLng());
+                if (customerMarker) points.push(customerMarker.getLatLng());
+
+                if (points.length >= 2) {
+                    if (routePolyline) map.removeLayer(routePolyline);
+                    routePolyline = L.polyline(points, {
+                        color: '#2563eb',
+                        weight: 4,
+                        opacity: 0.75,
+                        dashArray: '8, 8'
+                    }).addTo(map);
+                }
+            }
+
+            function updateDriverLocation(lat, lng) {
+                if (!map) return;
+                const latNum = parseFloat(lat);
+                const lngNum = parseFloat(lng);
+
+                if (!driverMarker) {
+                    driverMarker = L.marker([latNum, lngNum], { icon: vehicleIcon }).addTo(map)
+                        .bindPopup('<strong>Delivery Driver</strong><br>En route with fresh produce');
+                } else {
+                    driverMarker.setLatLng([latNum, lngNum]);
+                }
+
+                // Show Follow Driver button
+                const focusDriverBtn = document.getElementById('btn-focus-driver');
+                if (focusDriverBtn) {
+                    focusDriverBtn.style.display = 'inline-block';
+                }
+
+                drawRoutePolyline();
+
+                // Compute distance and ETA HUD
+                if (customerLat && customerLng) {
+                    const distKm = haversineDist(latNum, lngNum, customerLat, customerLng);
+                    const etaMinutes = Math.max(2, Math.round((distKm / 28) * 60)); // approx 28 km/h in urban
+                    const etaTextEl = document.getElementById('hud-eta-text');
+                    if (etaTextEl) {
+                        etaTextEl.innerHTML = `<strong>${distKm.toFixed(1)} km</strong> away (approx <strong>${etaMinutes} mins</strong>)`;
+                    }
+                }
+            }
+
+            initLiveMap();
+
+            // Receive live GPS broadcasts from driver
+            socket.on('customer_location_update', (loc) => {
+                if (loc && loc.lat && loc.lng) {
+                    updateDriverLocation(loc.lat, loc.lng);
+                }
             });
         });
     </script>

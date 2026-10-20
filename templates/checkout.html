@@ -102,11 +102,12 @@
                     <span class="badge bg-secondary-subtle text-secondary rounded-pill" id="gps-badge">Locating</span>
                 </div>
 
-                <!-- Hidden inputs for coordinates (Preserved) -->
+                <!-- Hidden inputs for idempotency & coordinates -->
+                <input type="hidden" name="idempotency_key" value="{{ idempotency_key }}">
                 <input type="hidden" id="customer_latitude" name="customer_latitude">
                 <input type="hidden" id="customer_longitude" name="customer_longitude">
 
-                <button type="submit" class="btn btn-primary btn-lg w-100 py-3 fw-bold fs-6">
+                <button type="submit" id="btn-place-order" class="btn btn-primary btn-lg w-100 py-3 fw-bold fs-6">
                     <i class="bi bi-check2-circle me-1"></i> Place Order Now
                 </button>
             </form>
@@ -118,6 +119,22 @@
 {% block scripts %}
 <script>
     document.addEventListener('DOMContentLoaded', () => {
+        const checkoutForm = document.getElementById('checkout-form');
+        const submitBtn = document.getElementById('btn-place-order');
+        let isSubmitting = false;
+
+        if (checkoutForm && submitBtn) {
+            checkoutForm.addEventListener('submit', (e) => {
+                if (isSubmitting) {
+                    e.preventDefault();
+                    return false;
+                }
+                isSubmitting = true;
+                submitBtn.disabled = true;
+                submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>Placing Order...';
+            });
+        }
+
         const latInput = document.getElementById('customer_latitude');
         const lonInput = document.getElementById('customer_longitude');
         const statusText = document.getElementById('gps-status-text');

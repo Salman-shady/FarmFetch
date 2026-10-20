@@ -1,6 +1,9 @@
 import os
 import math 
 import datetime
+import secrets
+import hashlib
+import hmac
 from flask import Flask, render_template, redirect, url_for, request, flash, session, jsonify, abort
 import pymongo
 from flask_login import LoginManager, UserMixin, login_user, logout_user, current_user, login_required
@@ -232,8 +235,19 @@ class BaseModel(metaclass=ModelMeta):
             return super().__getattribute__(name)
         if '_data' in self.__dict__ and name in self._data:
             return self._data[name]
-        # Return None for optional model attributes to safeguard templates
-        if name in ('driver_id', 'latitude', 'longitude', 'customer_latitude', 'customer_longitude', 'unit', 'description', 'created_at', 'stock', 'image_url', 'category'):
+        # Return None or empty list for optional model attributes to safeguard templates
+        if name == 'status_history':
+            return []
+        if name in (
+            'driver_id', 'latitude', 'longitude', 'customer_latitude', 'customer_longitude',
+            'unit', 'description', 'created_at', 'stock', 'image_url', 'category',
+            'pickup_otp', 'pickup_otp_hash', 'pickup_otp_expires_at', 'pickup_otp_attempts',
+            'delivery_otp', 'delivery_otp_hash', 'delivery_otp_expires_at', 'delivery_otp_attempts',
+            'idempotency_key', 'stock_reserved', 'stock_restored',
+            'accepted_at', 'preparing_at', 'ready_at', 'assigned_at', 'picked_up_at',
+            'delivered_at', 'cancelled_at', 'failed_at', 'cancellation_reason', 'failure_reason',
+            'driver_latitude', 'driver_longitude', 'last_location_at'
+        ):
             return None
         raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
 
@@ -385,6 +399,228 @@ class ProduceItem(BaseModel):
         return Farm.query.get(self.farm_id)
 
 
+# --- Order Lifecycle Status Constants & Helpers ---
+
+class OrderStatus:
+    PLACED = 'PLACED'
+    FARMER_ACCEPTED = 'FARMER_ACCEPTED'
+    PREPARING = 'PREPARING'
+    READY_FOR_PICKUP = 'READY_FOR_PICKUP'
+    DRIVER_ASSIGNED = 'DRIVER_ASSIGNED'
+    PICKED_UP = 'PICKED_UP'
+    DELIVERED = 'DELIVERED'
+    CANCELLED = 'CANCELLED'
+    DELIVERY_FAILED = 'DELIVERY_FAILED'
+
+# Normalized lookup for backward compatibility with title-cased DB statuses
+NORMALIZED_STATUS = {
+    'PLACED': OrderStatus.PLACED,
+    'Placed': OrderStatus.PLACED,
+    'FARMER_ACCEPTED': OrderStatus.FARMER_ACCEPTED,
+    'Accepted': OrderStatus.FARMER_ACCEPTED,
+    'PREPARING': OrderStatus.PREPARING,
+    'Preparing': OrderStatus.PREPARING,
+    'READY_FOR_PICKUP': OrderStatus.READY_FOR_PICKUP,
+    'Ready for Pickup': OrderStatus.READY_FOR_PICKUP,
+    'DRIVER_ASSIGNED': OrderStatus.DRIVER_ASSIGNED,
+    'PICKED_UP': OrderStatus.PICKED_UP,
+    'Picked Up': OrderStatus.PICKED_UP,
+    'DELIVERED': OrderStatus.DELIVERED,
+    'Delivered': OrderStatus.DELIVERED,
+    'CANCELLED': OrderStatus.CANCELLED,
+    'Cancelled': OrderStatus.CANCELLED,
+    'Rejected': OrderStatus.CANCELLED,
+    'DELIVERY_FAILED': OrderStatus.DELIVERY_FAILED,
+    'Delivery Failed': OrderStatus.DELIVERY_FAILED
+}
+
+VALID_TRANSITIONS = {
+    OrderStatus.PLACED: [OrderStatus.FARMER_ACCEPTED, OrderStatus.CANCELLED],
+    OrderStatus.FARMER_ACCEPTED: [OrderStatus.PREPARING, OrderStatus.CANCELLED],
+    OrderStatus.PREPARING: [OrderStatus.READY_FOR_PICKUP, OrderStatus.CANCELLED],
+    OrderStatus.READY_FOR_PICKUP: [OrderStatus.DRIVER_ASSIGNED, OrderStatus.CANCELLED],
+    OrderStatus.DRIVER_ASSIGNED: [OrderStatus.PICKED_UP, OrderStatus.READY_FOR_PICKUP, OrderStatus.CANCELLED],
+    OrderStatus.PICKED_UP: [OrderStatus.DELIVERED, OrderStatus.DELIVERY_FAILED],
+    OrderStatus.DELIVERED: [],
+    OrderStatus.CANCELLED: [],
+    OrderStatus.DELIVERY_FAILED: [OrderStatus.READY_FOR_PICKUP, OrderStatus.CANCELLED]
+}
+
+def generate_secure_otp(length=6):
+    """Generates a cryptographically secure random numeric OTP."""
+    return ''.join(secrets.choice('0123456789') for _ in range(length))
+
+def hash_otp(otp_str):
+    """Produces a secure SHA-256 hash using the secret key as salt."""
+    salt = app.config.get('SECRET_KEY', 'default_salt')
+    return hashlib.sha256(f"{str(otp_str).strip()}:{salt}".encode('utf-8')).hexdigest()
+
+def verify_otp_hash(input_otp, stored_hash):
+    """Constant-time verification of an OTP input against its stored hash."""
+    if not input_otp or not stored_hash:
+        return False
+    computed = hash_otp(str(input_otp).strip())
+    return hmac.compare_digest(computed, stored_hash)
+
+def restore_order_stock_once(order_id):
+    """
+    Atomically restores stock for an order if it hasn't been restored yet.
+    Guarantees idempotency so retries do not restore stock multiple times.
+    """
+    order_doc = mongo_db['orders'].find_one_and_update(
+        {
+            '_id': order_id,
+            'stock_reserved': True,
+            'stock_restored': {'$ne': True}
+        },
+        {'$set': {'stock_restored': True}},
+        return_document=pymongo.ReturnDocument.BEFORE
+    )
+    if order_doc:
+        order_items = list(mongo_db['order_items'].find({'order_id': order_id}))
+        for oi in order_items:
+            item_id = oi.get('produce_item_id')
+            qty = oi.get('quantity', 0)
+            if item_id and qty > 0:
+                mongo_db['produce_items'].update_one(
+                    {'_id': item_id},
+                    {'$inc': {'stock': qty}}
+                )
+        return True
+    return False
+
+def emit_order_status_update(order, new_status, actor_user=None):
+    """Emits real-time event without leaking sensitive OTPs."""
+    order_room = f"order_{order.id}"
+    farm_room = f"farm_{order.farm_id}"
+    
+    driver_name = None
+    if order.driver:
+        driver_name = order.driver.email.split('@')[0]
+
+    payload = {
+        'order_id': order.id,
+        'status': new_status,
+        'status_display': order.status_display,
+        'status_css': order.status_css_class,
+        'stepper_weight': order.stepper_weight,
+        'driver_name': driver_name,
+        'timestamp': datetime.datetime.now().strftime('%b %d, %I:%M %p')
+    }
+    
+    socketio.emit('status_update', payload, to=order_room)
+    socketio.emit('status_update', payload, to=farm_room)
+    
+    if new_status == OrderStatus.READY_FOR_PICKUP:
+        socketio.emit('order_available', {
+            'order_id': order.id,
+            'farm_name': order.farm.name if order.farm else 'Farm',
+            'farm_address': getattr(order.farm, 'address', '') if order.farm else '',
+            'customer_name': getattr(order, 'customer_name', ''),
+            'customer_address': getattr(order, 'customer_address', ''),
+            'total': getattr(order, 'total_price', 0.0)
+        }, to='drivers_room')
+
+def transition_order_status(order, new_status, actor_user=None, notes=None, **extra_updates):
+    """
+    Validates and executes an order status transition.
+    Enforces authorization, updates timestamps, updates status history,
+    manages inventory rollback if cancelled, saves to MongoDB,
+    and emits Socket.IO event.
+    Returns (success: bool, error_message: str or None).
+    """
+    current_norm = NORMALIZED_STATUS.get(order.status, order.status)
+    target_norm = NORMALIZED_STATUS.get(new_status, new_status)
+    
+    allowed = VALID_TRANSITIONS.get(current_norm, [])
+    if target_norm not in allowed:
+        return False, f"Invalid status transition from '{order.status}' to '{new_status}'."
+
+    now = datetime.datetime.now()
+    now_iso = now.isoformat()
+    now_display = now.strftime('%b %d, %I:%M %p')
+
+    update_doc = {
+        'status': target_norm,
+        'updated_at': now
+    }
+    
+    if target_norm == OrderStatus.FARMER_ACCEPTED:
+        update_doc['accepted_at'] = now
+    elif target_norm == OrderStatus.PREPARING:
+        update_doc['preparing_at'] = now
+    elif target_norm == OrderStatus.READY_FOR_PICKUP:
+        update_doc['ready_at'] = now
+        if current_norm == OrderStatus.DRIVER_ASSIGNED:
+            update_doc['driver_id'] = None
+            update_doc['pickup_otp'] = None
+            update_doc['pickup_otp_hash'] = None
+    elif target_norm == OrderStatus.DRIVER_ASSIGNED:
+        update_doc['assigned_at'] = now
+        p_otp = generate_secure_otp(6)
+        update_doc['pickup_otp'] = p_otp
+        update_doc['pickup_otp_hash'] = hash_otp(p_otp)
+        update_doc['pickup_otp_expires_at'] = now + datetime.timedelta(hours=24)
+        update_doc['pickup_otp_attempts'] = 0
+    elif target_norm == OrderStatus.PICKED_UP:
+        update_doc['picked_up_at'] = now
+        update_doc['pickup_otp'] = None
+        update_doc['pickup_otp_hash'] = None
+        d_otp = generate_secure_otp(6)
+        update_doc['delivery_otp'] = d_otp
+        update_doc['delivery_otp_hash'] = hash_otp(d_otp)
+        update_doc['delivery_otp_expires_at'] = now + datetime.timedelta(hours=24)
+        update_doc['delivery_otp_attempts'] = 0
+    elif target_norm == OrderStatus.DELIVERED:
+        update_doc['delivered_at'] = now
+        update_doc['delivery_otp'] = None
+        update_doc['delivery_otp_hash'] = None
+    elif target_norm == OrderStatus.CANCELLED:
+        update_doc['cancelled_at'] = now
+        if notes:
+            update_doc['cancellation_reason'] = notes
+        update_doc['pickup_otp'] = None
+        update_doc['pickup_otp_hash'] = None
+        update_doc['delivery_otp'] = None
+        update_doc['delivery_otp_hash'] = None
+        restore_order_stock_once(order.id)
+    elif target_norm == OrderStatus.DELIVERY_FAILED:
+        update_doc['failed_at'] = now
+        if notes:
+            update_doc['failure_reason'] = notes
+
+    update_doc.update(extra_updates)
+
+    actor_role = actor_user.role if actor_user else 'system'
+    actor_id = actor_user.id if actor_user else None
+    
+    history_entry = {
+        'status': target_norm,
+        'timestamp': now_display,
+        'iso_timestamp': now_iso,
+        'actor_id': actor_id,
+        'actor_role': actor_role,
+        'notes': notes or f"Status transitioned to {target_norm}"
+    }
+
+    res = mongo_db['orders'].find_one_and_update(
+        {'_id': order.id, 'status': order.status},
+        {
+            '$set': update_doc,
+            '$push': {'status_history': history_entry}
+        },
+        return_document=pymongo.ReturnDocument.AFTER
+    )
+    if not res:
+        return False, "Order status was updated concurrently. Please refresh the page."
+
+    order._data.update(res)
+    order.status = target_norm
+
+    emit_order_status_update(order, target_norm, actor_user)
+    return True, None
+
+
 class Order(BaseModel):
     __collection__ = 'orders'
 
@@ -398,7 +634,17 @@ class Order(BaseModel):
         if 'created_at' not in kwargs:
             kwargs['created_at'] = datetime.datetime.now()
         if 'status' not in kwargs:
-            kwargs['status'] = 'Placed'
+            kwargs['status'] = OrderStatus.PLACED
+        if 'status_history' not in kwargs:
+            c_time = kwargs['created_at']
+            time_display = c_time.strftime('%b %d, %I:%M %p') if hasattr(c_time, 'strftime') else str(c_time)
+            kwargs['status_history'] = [{
+                'status': kwargs.get('status', OrderStatus.PLACED),
+                'timestamp': time_display,
+                'iso_timestamp': c_time.isoformat() if hasattr(c_time, 'isoformat') else str(c_time),
+                'actor_role': 'customer',
+                'notes': 'Order placed by customer'
+            }]
         super().__init__(**kwargs)
 
     @property
@@ -418,6 +664,173 @@ class Order(BaseModel):
     @property
     def items(self):
         return OrderItem.query.filter_by(order_id=self.id).all()
+
+    @property
+    def status_display(self):
+        s = getattr(self, 'status', OrderStatus.PLACED)
+        displays = {
+            'PLACED': 'Placed',
+            'Placed': 'Placed',
+            'FARMER_ACCEPTED': 'Farmer Accepted',
+            'Accepted': 'Farmer Accepted',
+            'PREPARING': 'Preparing',
+            'Preparing': 'Preparing',
+            'READY_FOR_PICKUP': 'Ready for Pickup',
+            'Ready for Pickup': 'Ready for Pickup',
+            'DRIVER_ASSIGNED': 'Driver Assigned',
+            'PICKED_UP': 'Picked Up',
+            'Picked Up': 'Picked Up',
+            'DELIVERED': 'Delivered',
+            'Delivered': 'Delivered',
+            'CANCELLED': 'Cancelled',
+            'Cancelled': 'Cancelled',
+            'Rejected': 'Cancelled',
+            'DELIVERY_FAILED': 'Delivery Failed',
+            'Delivery Failed': 'Delivery Failed'
+        }
+        return displays.get(s, str(s).replace('_', ' ').title())
+
+    @property
+    def status_css_class(self):
+        s = getattr(self, 'status', OrderStatus.PLACED)
+        classes = {
+            'PLACED': 'status-Placed',
+            'Placed': 'status-Placed',
+            'FARMER_ACCEPTED': 'status-Farmer-Accepted',
+            'Accepted': 'status-Farmer-Accepted',
+            'PREPARING': 'status-Preparing',
+            'Preparing': 'status-Preparing',
+            'READY_FOR_PICKUP': 'status-Ready-for-Pickup',
+            'Ready for Pickup': 'status-Ready-for-Pickup',
+            'DRIVER_ASSIGNED': 'status-Driver-Assigned',
+            'PICKED_UP': 'status-Picked-Up',
+            'Picked Up': 'status-Picked-Up',
+            'DELIVERED': 'status-Delivered',
+            'Delivered': 'status-Delivered',
+            'CANCELLED': 'status-Cancelled',
+            'Cancelled': 'status-Cancelled',
+            'Rejected': 'status-Cancelled',
+            'DELIVERY_FAILED': 'status-Delivery-Failed',
+            'Delivery Failed': 'status-Delivery-Failed'
+        }
+        return classes.get(s, f"status-{str(s).replace('_', '-').replace(' ', '-')}")
+
+    @property
+    def stepper_weight(self):
+        s = getattr(self, 'status', OrderStatus.PLACED)
+        weights = {
+            'PLACED': 1,
+            'Placed': 1,
+            'FARMER_ACCEPTED': 2,
+            'Accepted': 2,
+            'PREPARING': 3,
+            'Preparing': 3,
+            'READY_FOR_PICKUP': 4,
+            'Ready for Pickup': 4,
+            'DRIVER_ASSIGNED': 5,
+            'PICKED_UP': 6,
+            'Picked Up': 6,
+            'DELIVERED': 7,
+            'Delivered': 7,
+            'CANCELLED': -1,
+            'Cancelled': -1,
+            'Rejected': -1,
+            'DELIVERY_FAILED': -2,
+            'Delivery Failed': -2
+        }
+        return weights.get(s, 1)
+
+    @property
+    def timeline_steps(self):
+        history = getattr(self, 'status_history', []) or []
+        history_map = {}
+        for h in history:
+            history_map[h.get('status')] = h.get('timestamp')
+            
+        def get_time(status_keys, field_fallback):
+            for k in status_keys:
+                if k in history_map:
+                    return history_map[k]
+            val = getattr(self, field_fallback, None)
+            if val:
+                if hasattr(val, 'strftime'):
+                    return val.strftime('%b %d, %I:%M %p')
+                return str(val)
+            return None
+
+        current_w = self.stepper_weight
+        steps = [
+            {
+                'key': 'PLACED',
+                'weight': 1,
+                'label': 'Placed',
+                'icon': 'bi-receipt',
+                'time': get_time(['PLACED', 'Placed'], 'created_at'),
+            },
+            {
+                'key': 'FARMER_ACCEPTED',
+                'weight': 2,
+                'label': 'Accepted',
+                'icon': 'bi-check2-circle',
+                'time': get_time(['FARMER_ACCEPTED', 'Accepted'], 'accepted_at'),
+            },
+            {
+                'key': 'PREPARING',
+                'weight': 3,
+                'label': 'Preparing',
+                'icon': 'bi-box-seam',
+                'time': get_time(['PREPARING', 'Preparing'], 'preparing_at'),
+            },
+            {
+                'key': 'READY_FOR_PICKUP',
+                'weight': 4,
+                'label': 'Ready for Pickup',
+                'icon': 'bi-geo-alt',
+                'time': get_time(['READY_FOR_PICKUP', 'Ready for Pickup'], 'ready_at'),
+            },
+            {
+                'key': 'DRIVER_ASSIGNED',
+                'weight': 5,
+                'label': 'Driver Assigned',
+                'icon': 'bi-person-badge',
+                'time': get_time(['DRIVER_ASSIGNED'], 'assigned_at'),
+            },
+            {
+                'key': 'PICKED_UP',
+                'weight': 6,
+                'label': 'Picked Up',
+                'icon': 'bi-truck',
+                'time': get_time(['PICKED_UP', 'Picked Up'], 'picked_up_at'),
+            },
+            {
+                'key': 'DELIVERED',
+                'weight': 7,
+                'label': 'Delivered',
+                'icon': 'bi-house-check',
+                'time': get_time(['DELIVERED', 'Delivered'], 'delivered_at'),
+            }
+        ]
+        
+        for step in steps:
+            if current_w < 0:
+                step['state'] = 'completed' if step['time'] else 'inactive'
+            elif current_w >= 7 and step['weight'] == 7:
+                step['state'] = 'completed'
+            elif current_w > step['weight']:
+                step['state'] = 'completed'
+            elif current_w == step['weight']:
+                step['state'] = 'active'
+            else:
+                step['state'] = 'pending'
+        return steps
+
+    def can_cancel_by_customer(self):
+        norm = NORMALIZED_STATUS.get(self.status, self.status)
+        return norm in [OrderStatus.PLACED, OrderStatus.FARMER_ACCEPTED]
+
+    def can_cancel_by_farmer(self):
+        norm = NORMALIZED_STATUS.get(self.status, self.status)
+        return norm in [OrderStatus.PLACED, OrderStatus.FARMER_ACCEPTED, OrderStatus.PREPARING]
 
 
 class OrderItem(BaseModel):
@@ -518,9 +931,13 @@ def customer_dashboard():
     
     all_orders = Order.query.filter_by(customer_id=current_user.id).order_by(Order.created_at.desc()).all()
     
-    active_statuses = ['Placed', 'Preparing', 'Ready for Pickup', 'Picked Up']
+    active_statuses = [
+        'Placed', 'PLACED', 'FARMER_ACCEPTED', 'Accepted',
+        'Preparing', 'PREPARING', 'Ready for Pickup', 'READY_FOR_PICKUP',
+        'DRIVER_ASSIGNED', 'Picked Up', 'PICKED_UP'
+    ]
     active_orders = [o for o in all_orders if o.status in active_statuses]
-    completed_orders = [o for o in all_orders if o.status == 'Delivered']
+    completed_orders = [o for o in all_orders if o.status in ['Delivered', 'DELIVERED']]
     recent_orders = all_orders[:5]
     
     total_spent = sum(o.total_price for o in completed_orders if o.total_price)
@@ -544,11 +961,11 @@ def api_driver_stats():
         return jsonify({'error': 'Forbidden'}), 403
     
     all_driver_orders = Order.query.filter_by(driver_id=current_user.id).all()
-    completed = [o for o in all_driver_orders if o.status == 'Delivered']
+    completed = [o for o in all_driver_orders if o.status in ['Delivered', 'DELIVERED']]
     
     return jsonify({
         'total_delivered': len(completed),
-        'total_earnings': round(sum(o.total_price * 0.1 for o in completed if o.total_price), 2)
+        'total_earnings': round(sum((o.total_price or 0) * 0.1 for o in completed), 2)
     })
 
 @app.route('/api/farmer/sales-chart')
@@ -852,15 +1269,15 @@ def farmer_dashboard():
         flash('Welcome! Please create your farm profile to get started.', 'info')
         return redirect(url_for('create_farm_profile'))
     
-    orders = Order.query.filter_by(farm_id=farm.id).all()
+    orders = Order.query.filter_by(farm_id=farm.id).order_by(Order.created_at.desc()).all()
     produce_items = ProduceItem.query.filter_by(farm_id=farm.id).all()
     
     total_orders = len(orders)
-    pending_orders = len([o for o in orders if o.status in ['Placed', 'Preparing']])
-    ready_orders = len([o for o in orders if o.status == 'Ready for Pickup'])
-    completed_orders = len([o for o in orders if o.status == 'Delivered'])
-    total_revenue = sum(o.total_price for o in orders if o.total_price and o.status != 'Rejected')
-    recent_orders = Order.query.filter_by(farm_id=farm.id).order_by(Order.created_at.desc()).all()[:10]
+    pending_orders = len([o for o in orders if o.status in ['Placed', 'PLACED', 'FARMER_ACCEPTED', 'Accepted', 'Preparing', 'PREPARING']])
+    ready_orders = len([o for o in orders if o.status in ['Ready for Pickup', 'READY_FOR_PICKUP', 'DRIVER_ASSIGNED']])
+    completed_orders = len([o for o in orders if o.status in ['Delivered', 'DELIVERED']])
+    total_revenue = sum(o.total_price for o in orders if o.total_price and o.status not in ['Rejected', 'Cancelled', 'CANCELLED', 'DELIVERY_FAILED'])
+    recent_orders = orders[:10]
     
     # Low stock items: stock is set and <= 5
     low_stock_items = [item for item in produce_items if getattr(item, 'stock', None) is not None and item.stock <= 5]
@@ -1082,9 +1499,15 @@ def remove_from_cart(item_id):
         
     return redirect(url_for('view_cart'))
 
+# --- Shopping Cart & Order Routes ---
+
 @app.route('/checkout', methods=['GET', 'POST'])
 @login_required
 def checkout():
+    if current_user.role != 'customer':
+        flash('Only customers can place orders.', 'warning')
+        return redirect(url_for('home'))
+
     cart_items, total_price = get_cart_details()
     
     if not cart_items:
@@ -1092,9 +1515,21 @@ def checkout():
         return redirect(url_for('home'))
         
     if request.method == 'POST':
-        name = request.form.get('name')
-        address = request.form.get('address')
-        phone = request.form.get('phone')
+        # Idempotency token check
+        idempotency_key = request.form.get('idempotency_key')
+        if idempotency_key:
+            existing = mongo_db['orders'].find_one({
+                'customer_id': current_user.id,
+                'idempotency_key': idempotency_key
+            })
+            if existing:
+                flash('Your order has already been received! Showing your order status.', 'info')
+                session.pop('cart', None)
+                return redirect(url_for('order_details', order_id=existing['_id']))
+
+        name = request.form.get('name', '').strip()
+        address = request.form.get('address', '').strip()
+        phone = request.form.get('phone', '').strip()
         try:
             cust_lat = float(request.form.get('customer_latitude'))
             cust_lon = float(request.form.get('customer_longitude'))
@@ -1103,42 +1538,131 @@ def checkout():
             cust_lon = None
         
         if not name or not address or not phone:
-            flash('Please fill out all delivery details.', 'danger')
+            flash('Please fill out all delivery recipient details.', 'danger')
             return redirect(url_for('checkout'))
 
-        first_item_in_cart = cart_items[0]['item']
-        farm_id = first_item_in_cart.farm_id
-        
+        # Server-side validation of cart items, current prices, and farm ownership
+        server_total = 0.0
+        verified_items = []
+        farm_ids = set()
+
+        for c_data in cart_items:
+            item_obj = c_data['item']
+            raw_qty = c_data['quantity']
+            
+            # Fetch fresh item directly from DB to verify price & availability
+            fresh_item = ProduceItem.query.get(item_obj.id)
+            if not fresh_item:
+                flash(f"Item '{item_obj.name}' is no longer available.", 'danger')
+                return redirect(url_for('view_cart'))
+                
+            try:
+                qty = int(raw_qty)
+                if qty <= 0:
+                    raise ValueError
+            except (TypeError, ValueError):
+                flash("Invalid quantity in your cart.", 'danger')
+                return redirect(url_for('view_cart'))
+
+            item_price = float(fresh_item.price)
+            server_total += item_price * qty
+            farm_ids.add(fresh_item.farm_id)
+            verified_items.append({
+                'item': fresh_item,
+                'quantity': qty,
+                'price': item_price
+            })
+
+        if len(farm_ids) > 1:
+            flash('You can only purchase from one farm per order.', 'warning')
+            return redirect(url_for('view_cart'))
+            
+        farm_id = next(iter(farm_ids))
+        farm = Farm.query.get(farm_id)
+        if not farm:
+            flash('Origin farm not found.', 'danger')
+            return redirect(url_for('view_cart'))
+
+        # Safe conditional atomic inventory deduction with rollback
+        reserved_items = []
+        stock_failed = False
+        failed_item_name = ""
+
+        for v in verified_items:
+            item_id = v['item'].id
+            needed_qty = v['quantity']
+            
+            # Atomic decrement only if available stock is >= requested quantity
+            res = mongo_db['produce_items'].find_one_and_update(
+                {
+                    '_id': item_id,
+                    'stock': {'$gte': needed_qty}
+                },
+                {'$inc': {'stock': -needed_qty}},
+                return_document=pymongo.ReturnDocument.AFTER
+            )
+            
+            if not res:
+                stock_failed = True
+                failed_item_name = v['item'].name
+                break
+                
+            reserved_items.append((item_id, needed_qty))
+
+        if stock_failed:
+            # Roll back all previously deducted items in this order
+            for r_id, r_qty in reserved_items:
+                mongo_db['produce_items'].update_one(
+                    {'_id': r_id},
+                    {'$inc': {'stock': r_qty}}
+                )
+            fresh_stock_doc = mongo_db['produce_items'].find_one({'name': failed_item_name})
+            available_now = fresh_stock_doc.get('stock', 0) if fresh_stock_doc else 0
+            flash(f"Sorry, '{failed_item_name}' only has {available_now} units remaining. Please update your cart.", 'warning')
+            return redirect(url_for('view_cart'))
+
+        # Create Order record with recalculated total & lifecycle history
+        now = datetime.datetime.now()
         new_order = Order(
             customer_id=current_user.id,
             farm_id=farm_id,
             customer_name=name,
             customer_address=address,
             customer_phone=phone,
-            total_price=total_price,
-            status='Placed',
+            total_price=round(server_total, 2),
+            status=OrderStatus.PLACED,
             customer_latitude=cust_lat,
-            customer_longitude=cust_lon
+            customer_longitude=cust_lon,
+            idempotency_key=idempotency_key,
+            stock_reserved=True,
+            stock_restored=False,
+            created_at=now,
+            status_history=[{
+                'status': OrderStatus.PLACED,
+                'timestamp': now.strftime('%b %d, %I:%M %p'),
+                'iso_timestamp': now.isoformat(),
+                'actor_id': current_user.id,
+                'actor_role': 'customer',
+                'notes': 'Order placed by customer'
+            }]
         )
         db.session.add(new_order)
         db.session.commit()
         
-        for item_data in cart_items:
-            item = item_data['item']
-            quantity = item_data['quantity']
-            
+        # Save OrderItem records
+        for v in verified_items:
             order_item = OrderItem(
                 order_id=new_order.id,
-                produce_item_id=item.id,
-                quantity=quantity,
-                price_per_item=item.price
+                produce_item_id=v['item'].id,
+                quantity=v['quantity'],
+                price_per_item=v['price']
             )
             db.session.add(order_item)
             
         db.session.commit()
         session.pop('cart', None)
 
-        # Emit real-time event to the farmer
+        # Real-time Socket.IO notification to farmer
         farm_room = f"farm_{farm_id}"
         socketio.emit('new_order', {
             'order_id': new_order.id,
@@ -1146,10 +1670,17 @@ def checkout():
             'total': new_order.total_price
         }, to=farm_room)
         
-        flash('Order placed successfully!', 'success')
+        flash('Order placed successfully! The farm has received your order.', 'success')
         return redirect(url_for('order_details', order_id=new_order.id))
 
-    return render_template('checkout.html', cart_items=cart_items, total_price=total_price)
+    # GET request: generate a unique idempotency key
+    idempotency_key = secrets.token_hex(16)
+    return render_template(
+        'checkout.html',
+        cart_items=cart_items,
+        total_price=total_price,
+        idempotency_key=idempotency_key
+    )
 
 @app.route('/order/<int:order_id>')
 @login_required
@@ -1159,13 +1690,78 @@ def order_details(order_id):
     # Security check: User is customer, farmer, or driver for this order
     is_customer = current_user.id == order.customer_id
     is_farmer = current_user.role == 'farmer' and current_user.farm and current_user.farm.id == order.farm_id
-    is_driver = current_user.role == 'driver' and current_user.id == order.driver_id
+    is_driver = current_user.role == 'driver' and (order.driver_id == current_user.id or order.status in [OrderStatus.READY_FOR_PICKUP, 'Ready for Pickup'])
     
     if not (is_customer or is_farmer or is_driver):
         flash('You do not have permission to view this order.', 'danger')
         return redirect(url_for('home'))
         
     return render_template('order_details.html', order=order)
+
+@app.route('/order/<int:order_id>/cancel', methods=['POST'])
+@login_required
+def cancel_order(order_id):
+    """Customer or Farmer cancels an eligible order; restores inventory exactly once."""
+    order = Order.query.get_or_404(order_id)
+    
+    is_customer = current_user.id == order.customer_id
+    is_farmer = current_user.role == 'farmer' and current_user.farm and current_user.farm.id == order.farm_id
+    
+    if not (is_customer or is_farmer):
+        flash('Unauthorized to cancel this order.', 'danger')
+        return redirect(url_for('order_details', order_id=order.id))
+        
+    if is_customer and not order.can_cancel_by_customer():
+        flash('Order has already progressed past the cancellation window.', 'warning')
+        return redirect(url_for('order_details', order_id=order.id))
+        
+    if is_farmer and not order.can_cancel_by_farmer():
+        flash('Order cannot be cancelled at this stage.', 'warning')
+        return redirect(url_for('farm_orders'))
+
+    reason = request.form.get('reason', f'Cancelled by {current_user.role}')
+    success, err = transition_order_status(order, OrderStatus.CANCELLED, current_user, notes=reason)
+    
+    if success:
+        flash(f'Order #{order.id} has been cancelled and produce inventory restored.', 'success')
+    else:
+        flash(f'Cancellation failed: {err}', 'danger')
+        
+    if is_farmer:
+        return redirect(url_for('farm_orders'))
+    return redirect(url_for('order_details', order_id=order.id))
+
+@app.route('/order/<int:order_id>/regenerate-otp', methods=['POST'])
+@login_required
+def regenerate_delivery_otp(order_id):
+    """Customer requests a new delivery OTP if status is PICKED_UP."""
+    order = Order.query.get_or_404(order_id)
+    if current_user.id != order.customer_id:
+        flash('Unauthorized.', 'danger')
+        return redirect(url_for('home'))
+        
+    current_norm = NORMALIZED_STATUS.get(order.status, order.status)
+    if current_norm != OrderStatus.PICKED_UP:
+        flash('Delivery OTP can only be regenerated while order is out for delivery.', 'warning')
+        return redirect(url_for('order_details', order_id=order.id))
+        
+    new_otp = generate_secure_otp(6)
+    new_hash = hash_otp(new_otp)
+    now = datetime.datetime.now()
+    
+    mongo_db['orders'].update_one(
+        {'_id': order.id},
+        {
+            '$set': {
+                'delivery_otp': new_otp,
+                'delivery_otp_hash': new_hash,
+                'delivery_otp_expires_at': now + datetime.timedelta(hours=24),
+                'delivery_otp_attempts': 0
+            }
+        }
+    )
+    flash('A fresh Delivery OTP has been generated! Present this code to your driver upon arrival.', 'success')
+    return redirect(url_for('order_details', order_id=order.id))
 
 @app.route('/my-orders')
 @login_required
@@ -1176,7 +1772,9 @@ def my_orders():
         return redirect(url_for('home'))
     orders = Order.query.filter_by(customer_id=current_user.id).order_by(Order.created_at.desc()).all()
     return render_template('customer_orders.html', orders=orders)
-    
+
+# --- Farmer Order Management Routes ---
+
 @app.route('/farmer/orders')
 @farmer_required
 def farm_orders():
@@ -1185,30 +1783,130 @@ def farm_orders():
     orders = Order.query.filter_by(farm_id=farm.id)\
                         .order_by(Order.created_at.desc())\
                         .all()
-                        
     return render_template('farm_orders.html', orders=orders)
+
+@app.route('/farmer/order/accept/<int:order_id>', methods=['POST'])
+@farmer_required
+def farmer_accept_order(order_id):
+    """Farmer accepts a PLACED order -> FARMER_ACCEPTED."""
+    order = Order.query.get_or_404(order_id)
+    if order.farm_id != current_user.farm.id:
+        flash('Unauthorized to manage this order.', 'danger')
+        return redirect(url_for('farm_orders'))
+        
+    success, err = transition_order_status(order, OrderStatus.FARMER_ACCEPTED, current_user, notes='Accepted by farmer')
+    if success:
+        flash(f'Order #{order.id} accepted! You can now start harvesting and preparing.', 'success')
+    else:
+        flash(f'Error: {err}', 'danger')
+    return redirect(url_for('farm_orders'))
+
+@app.route('/farmer/order/prepare/<int:order_id>', methods=['POST'])
+@farmer_required
+def farmer_prepare_order(order_id):
+    """Farmer starts preparing order -> PREPARING."""
+    order = Order.query.get_or_404(order_id)
+    if order.farm_id != current_user.farm.id:
+        flash('Unauthorized to manage this order.', 'danger')
+        return redirect(url_for('farm_orders'))
+        
+    success, err = transition_order_status(order, OrderStatus.PREPARING, current_user, notes='Farmer is harvesting and packing produce')
+    if success:
+        flash(f'Order #{order.id} status updated to Preparing.', 'success')
+    else:
+        flash(f'Error: {err}', 'danger')
+    return redirect(url_for('farm_orders'))
+
+@app.route('/farmer/order/ready/<int:order_id>', methods=['POST'])
+@farmer_required
+def farmer_ready_order(order_id):
+    """Farmer marks produce ready for driver pickup -> READY_FOR_PICKUP."""
+    order = Order.query.get_or_404(order_id)
+    if order.farm_id != current_user.farm.id:
+        flash('Unauthorized to manage this order.', 'danger')
+        return redirect(url_for('farm_orders'))
+        
+    success, err = transition_order_status(order, OrderStatus.READY_FOR_PICKUP, current_user, notes='Packaged and ready for driver pickup')
+    if success:
+        flash(f'Order #{order.id} is marked Ready for Pickup! Nearby drivers have been alerted.', 'success')
+    else:
+        flash(f'Error: {err}', 'danger')
+    return redirect(url_for('farm_orders'))
+
+@app.route('/farmer/order/verify-pickup/<int:order_id>', methods=['POST'])
+@farmer_required
+def farmer_verify_pickup(order_id):
+    """
+    Farmer verifies the driver's Pickup OTP before releasing produce.
+    Transitions DRIVER_ASSIGNED -> PICKED_UP upon successful verification.
+    """
+    order = Order.query.get_or_404(order_id)
+    if order.farm_id != current_user.farm.id:
+        flash('Unauthorized to manage this order.', 'danger')
+        return redirect(url_for('farm_orders'))
+
+    current_norm = NORMALIZED_STATUS.get(order.status, order.status)
+    if current_norm != OrderStatus.DRIVER_ASSIGNED:
+        flash('Pickup can only be verified after a driver is assigned.', 'warning')
+        return redirect(url_for('farm_orders'))
+
+    attempts = getattr(order, 'pickup_otp_attempts', 0) or 0
+    if attempts >= 5:
+        flash('Too many failed pickup verification attempts. Please contact dispatch or re-assign.', 'danger')
+        return redirect(url_for('farm_orders'))
+
+    expires_at = getattr(order, 'pickup_otp_expires_at', None)
+    if expires_at and datetime.datetime.now() > expires_at:
+        flash('Pickup verification OTP has expired.', 'danger')
+        return redirect(url_for('farm_orders'))
+
+    input_otp = request.form.get('pickup_otp', '').strip()
+    stored_hash = getattr(order, 'pickup_otp_hash', None)
+
+    if not verify_otp_hash(input_otp, stored_hash):
+        new_attempts = attempts + 1
+        mongo_db['orders'].update_one(
+            {'_id': order.id},
+            {'$set': {'pickup_otp_attempts': new_attempts}}
+        )
+        remaining = max(0, 5 - new_attempts)
+        flash(f'Invalid Pickup OTP. {remaining} attempt(s) remaining.', 'danger')
+        return redirect(url_for('order_details', order_id=order.id))
+
+    # OTP Verified: Transition to PICKED_UP
+    driver_name = order.driver.email.split('@')[0] if order.driver else 'Driver'
+    success, err = transition_order_status(
+        order,
+        OrderStatus.PICKED_UP,
+        current_user,
+        notes=f'Pickup verified by farmer with driver {driver_name}'
+    )
+    if success:
+        flash(f'Pickup verified! Order #{order.id} has been handed over to driver {driver_name}.', 'success')
+    else:
+        flash(f'Error updating order status: {err}', 'danger')
+    return redirect(url_for('farm_orders'))
 
 @app.route('/farmer/order/update/<int:order_id>', methods=['POST'])
 @farmer_required
 def update_order_status(order_id):
+    """Backwards-compatible update handler for legacy forms."""
     order = Order.query.get_or_404(order_id)
-    
     if order.farm_id != current_user.farm.id:
         flash('You do not have permission to update this order.', 'danger')
         return redirect(url_for('farm_orders'))
         
     new_status = request.form.get('status')
-    if new_status in ['Preparing', 'Ready for Pickup', 'Rejected']:
-        order.status = new_status
-        db.session.commit()
-
-        order_room = f"order_{order_id}"
-        socketio.emit('status_update', {
-            'status': new_status
-        }, to=order_room)
-
-        flash(f'Order #{order.id} status updated to "{new_status}".', 'success')
-              
+    if new_status in ['Preparing', 'PREPARING']:
+        return farmer_prepare_order(order_id)
+    elif new_status in ['Ready for Pickup', 'READY_FOR_PICKUP']:
+        return farmer_ready_order(order_id)
+    elif new_status in ['Rejected', 'CANCELLED', 'Cancelled']:
+        return cancel_order(order_id)
+    elif new_status in ['Farmer Accepted', 'FARMER_ACCEPTED', 'Accepted']:
+        return farmer_accept_order(order_id)
+    
+    flash(f'Unknown status update "{new_status}".', 'warning')
     return redirect(url_for('farm_orders'))
 
 # --- Delivery Driver Routes ---
@@ -1216,35 +1914,90 @@ def update_order_status(order_id):
 @app.route('/driver/dashboard')
 @driver_required
 def driver_dashboard():
-    """Show driver all orders that are 'Ready for Pickup' OR assigned to them."""
-    orders = Order.query.filter(
-        (Order.status == 'Ready for Pickup') | (Order.driver_id == current_user.id)
+    """Show driver available orders that are READY_FOR_PICKUP, and their active assigned orders."""
+    all_driver_orders = Order.query.filter_by(driver_id=current_user.id).order_by(Order.created_at.desc()).all()
+    
+    ready_orders = Order.query.filter(
+        (Order.status == OrderStatus.READY_FOR_PICKUP) | (Order.status == 'Ready for Pickup')
     ).order_by(Order.created_at.asc()).all()
+    available_orders = [o for o in ready_orders if not o.driver_id]
+    
+    in_progress_orders = [
+        o for o in all_driver_orders
+        if o.status in [OrderStatus.DRIVER_ASSIGNED, OrderStatus.PICKED_UP, 'Picked Up']
+    ]
+    completed_orders = [
+        o for o in all_driver_orders
+        if o.status in [OrderStatus.DELIVERED, 'Delivered']
+    ]
 
-    return render_template('driver_dashboard.html', orders=orders)
+    return render_template(
+        'driver_dashboard.html',
+        available_orders=available_orders,
+        in_progress_orders=in_progress_orders,
+        completed_orders=completed_orders,
+        orders=available_orders + in_progress_orders
+    )
 
 @app.route('/driver/accept/<int:order_id>', methods=['POST'])
 @driver_required
 def driver_accept_order(order_id):
-    order = Order.query.get_or_404(order_id)
+    """
+    Driver accepts an eligible delivery assignment.
+    Prevents race conditions using atomic MongoDB update.
+    Transitions READY_FOR_PICKUP -> DRIVER_ASSIGNED (generates Pickup OTP).
+    """
+    now = datetime.datetime.now()
+    now_iso = now.isoformat()
+    now_display = now.strftime('%b %d, %I:%M %p')
+    driver_name = current_user.email.split('@')[0]
     
-    if order.status == 'Ready for Pickup':
-        order.status = 'Picked Up'
-        order.driver_id = current_user.id
-        db.session.commit()
-        
-        order_room = f"order_{order_id}"
-        socketio.emit('status_update', {
-            'status': 'Picked Up',
-            'driver_name': current_user.email.split('@')[0]
-        }, to=order_room)
-        
-        flash(f'You have accepted order #{order.id}.', 'success')
-        return redirect(url_for('driver_delivery', order_id=order.id))
-    else:
-        flash(f'Order #{order.id} is no longer available.', 'warning')
+    # Generate cryptographic pickup OTP
+    p_otp = generate_secure_otp(6)
+    p_hash = hash_otp(p_otp)
+    
+    # Atomic conditional update prevents concurrent assignment to multiple drivers
+    updated_doc = mongo_db['orders'].find_one_and_update(
+        {
+            '_id': order_id,
+            'status': {'$in': [OrderStatus.READY_FOR_PICKUP, 'Ready for Pickup']},
+            'driver_id': None
+        },
+        {
+            '$set': {
+                'status': OrderStatus.DRIVER_ASSIGNED,
+                'driver_id': current_user.id,
+                'assigned_at': now,
+                'updated_at': now,
+                'pickup_otp': p_otp,
+                'pickup_otp_hash': p_hash,
+                'pickup_otp_expires_at': now + datetime.timedelta(hours=24),
+                'pickup_otp_attempts': 0
+            },
+            '$push': {
+                'status_history': {
+                    'status': OrderStatus.DRIVER_ASSIGNED,
+                    'timestamp': now_display,
+                    'iso_timestamp': now_iso,
+                    'actor_id': current_user.id,
+                    'actor_role': 'driver',
+                    'notes': f'Accepted delivery by driver {driver_name}'
+                }
+            }
+        },
+        return_document=pymongo.ReturnDocument.AFTER
+    )
+    
+    if not updated_doc:
+        flash(f'Order #{order_id} is no longer available or was already accepted by another driver.', 'warning')
         return redirect(url_for('driver_dashboard'))
+        
+    order = Order.from_doc(updated_doc)
+    emit_order_status_update(order, OrderStatus.DRIVER_ASSIGNED, current_user)
     
+    flash(f'You have accepted Order #{order.id}! Present your Pickup OTP to the farmer upon arrival.', 'success')
+    return redirect(url_for('driver_delivery', order_id=order.id))
+
 @app.route('/driver/delivery/<int:order_id>')
 @driver_required
 def driver_delivery(order_id):
@@ -1256,56 +2009,178 @@ def driver_delivery(order_id):
         
     return render_template('driver_delivery.html', order=order)
 
+@app.route('/driver/order/verify-delivery/<int:order_id>', methods=['POST'])
 @app.route('/driver/complete_delivery/<int:order_id>', methods=['POST'])
 @driver_required
 def driver_complete_delivery(order_id):
+    """
+    Assigned driver submits Customer's Delivery OTP.
+    Confirms delivery only after successful server-side hash verification.
+    """
     order = Order.query.get_or_404(order_id)
     
-    if order.driver_id != current_user.id or order.status != 'Picked Up':
-        flash('Cannot confirm delivery.', 'danger')
+    if order.driver_id != current_user.id:
+        flash('Unauthorized to confirm this delivery.', 'danger')
         return redirect(url_for('driver_dashboard'))
         
-    order.status = 'Delivered'
-    db.session.commit()
-    
-    order_room = f"order_{order_id}"
-    socketio.emit('status_update', {
-        'status': 'Delivered',
-        'message': 'Your order has been successfully delivered!'
-    }, to=order_room)
-    
-    flash(f'Order #{order.id} marked as Delivered! Thank you.', 'success')
+    current_norm = NORMALIZED_STATUS.get(order.status, order.status)
+    if current_norm != OrderStatus.PICKED_UP:
+        flash('Delivery can only be confirmed once produce has been picked up.', 'warning')
+        return redirect(url_for('driver_delivery', order_id=order.id))
+
+    attempts = getattr(order, 'delivery_otp_attempts', 0) or 0
+    if attempts >= 5:
+        flash('Too many failed delivery attempts. The customer must regenerate a new code from their tracking page.', 'danger')
+        return redirect(url_for('driver_delivery', order_id=order.id))
+
+    expires_at = getattr(order, 'delivery_otp_expires_at', None)
+    if expires_at and datetime.datetime.now() > expires_at:
+        flash('Delivery OTP has expired. Please ask customer to regenerate their code.', 'danger')
+        return redirect(url_for('driver_delivery', order_id=order.id))
+
+    input_otp = request.form.get('delivery_otp', '').strip()
+    stored_hash = getattr(order, 'delivery_otp_hash', None)
+
+    if not verify_otp_hash(input_otp, stored_hash):
+        new_attempts = attempts + 1
+        mongo_db['orders'].update_one(
+            {'_id': order.id},
+            {'$set': {'delivery_otp_attempts': new_attempts}}
+        )
+        remaining = max(0, 5 - new_attempts)
+        flash(f'Invalid Delivery OTP. {remaining} attempt(s) remaining. Ask the customer for the code on their tracking screen.', 'danger')
+        return redirect(url_for('driver_delivery', order_id=order.id))
+
+    # Delivery OTP Verified: Transition to DELIVERED
+    success, err = transition_order_status(
+        order,
+        OrderStatus.DELIVERED,
+        current_user,
+        notes='Delivery successfully verified and completed with customer OTP'
+    )
+    if success:
+        flash(f'Order #{order.id} delivery verified and marked as Delivered! Thank you.', 'success')
+        return redirect(url_for('driver_dashboard'))
+    else:
+        flash(f'Error updating order: {err}', 'danger')
+        return redirect(url_for('driver_delivery', order_id=order.id))
+
+@app.route('/driver/order/delivery-failed/<int:order_id>', methods=['POST'])
+@driver_required
+def driver_delivery_failed(order_id):
+    """Assigned driver marks delivery failed if customer unreachable."""
+    order = Order.query.get_or_404(order_id)
+    if order.driver_id != current_user.id:
+        flash('Unauthorized.', 'danger')
+        return redirect(url_for('driver_dashboard'))
+        
+    reason = request.form.get('reason', 'Customer unreachable / wrong address')
+    success, err = transition_order_status(order, OrderStatus.DELIVERY_FAILED, current_user, notes=reason)
+    if success:
+        flash(f'Order #{order.id} marked as Delivery Failed.', 'warning')
+    else:
+        flash(f'Error: {err}', 'danger')
     return redirect(url_for('driver_dashboard'))
 
 # --- SocketIO Event Handlers ---
 
 @socketio.on('join_order_room')
 def handle_join_order_room(data):
-    """Called by customer OR farmer JS when they load an order page."""
-    order_id = data['order_id']
+    """Authenticate and authorize access to an order's real-time room."""
+    if not current_user.is_authenticated:
+        emit('error', {'message': 'Authentication required'})
+        return
+
+    try:
+        order_id = int(data.get('order_id'))
+    except (TypeError, ValueError):
+        emit('error', {'message': 'Invalid order ID'})
+        return
+
+    order = Order.query.get(order_id)
+    if not order:
+        emit('error', {'message': 'Order not found'})
+        return
+
+    # Check permission: customer, farm owner, assigned driver, or driver inspecting ready order
+    is_cust = order.customer_id == current_user.id
+    is_farm = current_user.role == 'farmer' and current_user.farm and current_user.farm.id == order.farm_id
+    is_drv = current_user.role == 'driver' and (order.driver_id == current_user.id or order.status in [OrderStatus.READY_FOR_PICKUP, 'Ready for Pickup'])
+
+    if not (is_cust or is_farm or is_drv):
+        emit('error', {'message': 'Unauthorized to join order room'})
+        return
+
     room = f"order_{order_id}"
     join_room(room)
-    print(f'Client joined room: {room}')
+    print(f'User {current_user.email} joined {room}')
 
 @socketio.on('join_farm_room')
 def handle_join_farm_room(data):
-    """Called by farmer JS when they load their order dashboard."""
-    farm_id = data['farm_id']
+    """Authorize access to a farm's private event channel."""
+    if not current_user.is_authenticated or current_user.role != 'farmer':
+        return
+    try:
+        farm_id = int(data.get('farm_id'))
+    except (TypeError, ValueError):
+        return
+        
+    if not current_user.farm or current_user.farm.id != farm_id:
+        return
+
     room = f"farm_{farm_id}"
     join_room(room)
-    print(f'Farmer joined room: {room}')
+    print(f'Farmer {current_user.email} joined {room}')
+
+@socketio.on('join_drivers_room')
+def handle_join_drivers_room():
+    """Allow logged in drivers to join available delivery announcements."""
+    if not current_user.is_authenticated or current_user.role != 'driver':
+        return
+    join_room('drivers_room')
+    print(f'Driver {current_user.email} joined drivers_room')
 
 @socketio.on('driver_location_update')
 def handle_driver_location_update(data):
     """
-    Received from the driver's browser.
-    Broadcasts the location to the customer's room.
+    Received from the assigned driver's browser GPS.
+    Persists coordinates in MongoDB and broadcasts to the customer's room.
     """
-    order_id = data['order_id']
-    location = { 'lat': data['lat'], 'lng': data['lng'] }
-    
+    if not current_user.is_authenticated or current_user.role != 'driver':
+        return
+        
+    try:
+        order_id = int(data.get('order_id'))
+        lat = float(data.get('lat'))
+        lng = float(data.get('lng'))
+    except (TypeError, ValueError):
+        return
+
+    order = Order.query.get(order_id)
+    if not order or order.driver_id != current_user.id:
+        return  # Unauthorized to stream location for this order
+
+    # Persist latest location to database
+    mongo_db['orders'].update_one(
+        {'_id': order_id},
+        {
+            '$set': {
+                'driver_latitude': lat,
+                'driver_longitude': lng,
+                'last_location_at': datetime.datetime.now()
+            }
+        }
+    )
+
+    location_payload = {
+        'order_id': order_id,
+        'lat': lat,
+        'lng': lng,
+        'driver_name': current_user.email.split('@')[0],
+        'timestamp': datetime.datetime.now().strftime('%I:%M:%S %p')
+    }
     customer_room = f"order_{order_id}"
-    emit('customer_location_update', location, to=customer_room)  
+    emit('customer_location_update', location_payload, to=customer_room)  
 
 # --- Real-time Chat Handler ---
 @socketio.on('send_chat_message')

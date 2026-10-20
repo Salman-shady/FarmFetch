@@ -141,12 +141,26 @@
           <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-3">
             <div>
               <div class="fw-bold text-dark fs-6">Order #{{ order.id }}</div>
-              <span class="status-pill status-Picked-Up"><i class="bi bi-truck"></i> En Route</span>
+              <span class="status-pill {{ order.status_css_class }}">
+                {% if order.status == 'DRIVER_ASSIGNED' %}
+                  <i class="bi bi-box-arrow-in-down"></i> Assigned - Awaiting Pickup
+                {% else %}
+                  <i class="bi bi-truck"></i> En Route to Customer
+                {% endif %}
+              </span>
             </div>
             <a href="{{ url_for('driver_delivery', order_id=order.id) }}" class="btn btn-primary btn-sm">
-              <i class="bi bi-cursor-fill me-1"></i> Continue Navigation
+              <i class="bi bi-cursor-fill me-1"></i> Live GPS Navigation
             </a>
           </div>
+
+          {% if order.status == 'DRIVER_ASSIGNED' %}
+          <div class="p-2 mb-3 rounded bg-primary-subtle border border-primary-subtle d-flex justify-content-between align-items-center">
+            <span class="small text-primary fw-semibold"><i class="bi bi-shield-lock me-1"></i>Pickup OTP (Show to Farmer):</span>
+            <span class="badge bg-primary px-3 py-1 font-monospace fs-6">{{ order.pickup_otp }}</span>
+          </div>
+          {% endif %}
+
           <div class="row g-2">
             <div class="col-md-6">
               <div class="route-info">
@@ -170,12 +184,21 @@
             </div>
             <span class="fw-bold text-success">${{ "%.2f"|format(order.total_price) }}</span>
           </div>
+
           <div class="mt-3 pt-2 border-top">
-            <form action="{{ url_for('driver_complete_delivery', order_id=order.id) }}" method="POST" onsubmit="return confirm('Confirm delivery handed over to customer?');">
-              <button type="submit" class="btn btn-success w-100">
-                <i class="bi bi-check2-circle me-1"></i> Confirm Delivery Completed
+            {% if order.status in ['PICKED_UP', 'Picked Up'] %}
+            <form action="{{ url_for('driver_complete_delivery', order_id=order.id) }}" method="POST" class="d-flex gap-2">
+              <input type="text" name="delivery_otp" placeholder="Enter 6-digit Customer OTP" 
+                     class="form-control" maxlength="6" pattern="\d{6}" required autocomplete="off">
+              <button type="submit" class="btn btn-success fw-bold text-nowrap">
+                <i class="bi bi-check2-circle me-1"></i> Confirm Delivery
               </button>
             </form>
+            {% else %}
+            <div class="alert alert-light py-2 px-3 small border mb-0 text-muted">
+              <i class="bi bi-info-circle me-1"></i>Head to the farm and present your Pickup OTP to collect produce.
+            </div>
+            {% endif %}
           </div>
         </div>
         {% endfor %}

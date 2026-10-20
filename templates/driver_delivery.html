@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Delivering Order #{{ order.id }} - Driver View{% endblock %}
+{% block title %}Delivering Order #{{ order.id }} - Driver Navigation - FarmFetch{% endblock %}
 
 {% block content %}
 <div class="row g-4 mb-5">
@@ -8,12 +8,16 @@
         <div class="d-flex flex-wrap justify-content-between align-items-center gap-3">
             <div>
                 <div class="d-flex align-items-center gap-2 mb-1">
-                    <h2 class="fw-bold mb-0 text-dark">Delivering Order #{{ order.id }}</h2>
-                    <span class="status-pill status-Picked-Up">
-                        <i class="bi bi-truck"></i> En Route
+                    <h2 class="fw-bold mb-0 text-dark">Delivery Dispatch #{{ order.id }}</h2>
+                    <span class="status-pill {{ order.status_css_class }}" id="order-status-badge">
+                        {% if order.status == 'DRIVER_ASSIGNED' %}
+                            <i class="bi bi-box-arrow-in-down"></i> Pickup Required
+                        {% else %}
+                            <i class="bi bi-truck"></i> En Route to Customer
+                        {% endif %}
                     </span>
                 </div>
-                <p class="text-muted small mb-0">Your live GPS location is being broadcast to the customer in real-time.</p>
+                <p class="text-muted small mb-0">Live vehicle coordinates are streamed in real-time to the customer.</p>
             </div>
             <a href="{{ url_for('driver_dashboard') }}" class="btn btn-outline-primary btn-sm">
                 <i class="bi bi-arrow-left"></i> Driver Dashboard
@@ -21,14 +25,14 @@
         </div>
     </div>
 
-    <!-- Left Column: Customer & Delivery Confirmation -->
+    <!-- Left Column: Verification & Steps -->
     <div class="col-lg-5">
         <!-- Live GPS Broadcast Card -->
         <div class="dashboard-card shadow-sm mb-4 border-start border-4 border-success bg-white">
             <div class="d-flex align-items-center justify-content-between mb-2">
                 <div class="d-flex align-items-center gap-2 text-success fw-bold">
                     <span class="spinner-grow spinner-grow-sm text-success" role="status"></span>
-                    <span>Live Location Sharing Active</span>
+                    <span>Live GPS Broadcast Active</span>
                 </div>
                 <span class="badge bg-success-subtle text-success rounded-pill px-3 py-1 small">WebSocket</span>
             </div>
@@ -37,14 +41,91 @@
             </p>
         </div>
 
-        <!-- Destination Details -->
+        {# --- STAGE 1: DRIVER_ASSIGNED -> Show Pickup OTP to Farmer --- #}
+        {% if order.status == 'DRIVER_ASSIGNED' %}
+        <div class="dashboard-card shadow-sm mb-4 border-start border-4 border-primary">
+            <div class="d-flex align-items-center gap-2 mb-2">
+                <span class="badge bg-primary rounded-circle p-2">1</span>
+                <h5 class="fw-bold mb-0 text-dark">Step 1: Farm Produce Pickup</h5>
+            </div>
+            <p class="text-muted small mb-3">
+                Head to the farm below. Show this <strong>6-digit Pickup OTP</strong> to the farmer to verify and collect the order:
+            </p>
+
+            <div class="otp-display-box mb-3">
+                <small class="text-uppercase fw-bold text-success-subtle d-block" style="font-size: 0.72rem; letter-spacing: 0.1em;">
+                    Your Farm Pickup OTP
+                </small>
+                <div class="otp-code my-1" style="font-size: 2.4rem;">{{ order.pickup_otp }}</div>
+                <small class="text-white-50" style="font-size: 0.72rem;">Farmer must verify this code to hand over produce</small>
+            </div>
+
+            <!-- Farm Pickup Info -->
+            <div class="p-3 rounded bg-light border mb-3">
+                <div class="fw-bold text-dark"><i class="bi bi-tree text-success me-2"></i>{{ order.farm.name if order.farm else 'Origin Farm' }}</div>
+                <div class="text-muted small mt-1"><i class="bi bi-geo-alt me-1"></i>{{ order.farm.address if order.farm else 'Local Region' }}</div>
+            </div>
+
+            {% if order.farm and order.farm.latitude and order.farm.longitude %}
+            <a href="https://www.google.com/maps/dir/?api=1&destination={{ order.farm.latitude }},{{ order.farm.longitude }}" 
+               target="_blank" class="btn btn-outline-primary w-100 btn-sm fw-semibold">
+                <i class="bi bi-map me-1"></i> Open Farm Navigation in Google Maps
+            </a>
+            {% endif %}
+        </div>
+        {% endif %}
+
+        {# --- STAGE 2: PICKED_UP -> Deliver to Customer & Verify Delivery OTP --- #}
+        {% if order.status in ['PICKED_UP', 'Picked Up'] %}
+        <div class="dashboard-card shadow-sm mb-4 border-start border-4 border-success">
+            <div class="d-flex align-items-center gap-2 mb-2">
+                <span class="badge bg-success rounded-circle p-2">2</span>
+                <h5 class="fw-bold mb-0 text-dark">Step 2: Customer Handover Verification</h5>
+            </div>
+            <p class="text-muted small mb-3">
+                Deliver produce to recipient. Ask the customer for their <strong>6-digit Delivery OTP</strong> shown on their order tracking screen:
+            </p>
+
+            <form action="{{ url_for('driver_complete_delivery', order_id=order.id) }}" method="POST" id="delivery-verify-form">
+                <div class="mb-3">
+                    <label class="form-label small fw-bold text-dark">Enter Customer's 6-Digit Code:</label>
+                    <input type="text" name="delivery_otp" id="delivery_otp" class="form-control otp-input-field text-center" 
+                           placeholder="000000" maxlength="6" pattern="\d{6}" required autocomplete="off">
+                    <small class="text-muted d-block mt-1 text-center" style="font-size: 0.75rem;">
+                        Attempts remaining: {{ 5 - (order.delivery_otp_attempts or 0) }} / 5
+                    </small>
+                </div>
+
+                <button type="submit" class="btn btn-success btn-lg w-100 py-3 fw-bold fs-6">
+                    <i class="bi bi-check2-circle me-1"></i> Verify OTP & Confirm Delivery
+                </button>
+            </form>
+
+            <hr class="my-3">
+
+            <!-- Report Failed Delivery Accordion -->
+            <details class="text-muted small">
+                <summary class="fw-semibold text-danger cursor-pointer mb-2">
+                    <i class="bi bi-exclamation-triangle me-1"></i> Report Delivery Issue / Unreachable Customer
+                </summary>
+                <form action="{{ url_for('driver_delivery_failed', order_id=order.id) }}" method="POST" onsubmit="return confirm('Report this delivery as failed?');" class="mt-2">
+                    <input type="text" name="reason" class="form-control form-control-sm mb-2" placeholder="Reason (e.g. customer unreachable, wrong address)" required>
+                    <button type="submit" class="btn btn-outline-danger btn-sm w-100">
+                        Mark Delivery Failed
+                    </button>
+                </form>
+            </details>
+        </div>
+        {% endif %}
+
+        <!-- Destination Details Card -->
         <div class="dashboard-card shadow-sm mb-4">
             <h5 class="fw-bold mb-3 text-dark border-bottom pb-2">
-                <i class="bi bi-geo-alt-fill text-danger me-2"></i>Destination Details
+                <i class="bi bi-geo-alt-fill text-danger me-2"></i>Destination & Payment
             </h5>
             
             <div class="mb-3">
-                <label class="text-muted small d-block">Customer Recipient</label>
+                <label class="text-muted small d-block">Recipient Customer</label>
                 <span class="fs-5 fw-bold text-dark">{{ order.customer_name }}</span>
             </div>
 
@@ -55,27 +136,26 @@
                 </div>
             </div>
 
-            <div class="mb-4">
+            <div class="mb-3">
                 <label class="text-muted small d-block">Customer Phone</label>
                 <a href="tel:{{ order.customer_phone }}" class="btn btn-outline-primary btn-sm d-inline-flex align-items-center gap-2">
                     <i class="bi bi-telephone-fill"></i> Call {{ order.customer_phone }}
                 </a>
             </div>
 
-            <div class="mb-4">
+            <div class="mb-3">
                 <div class="d-flex justify-content-between align-items-center p-2 rounded bg-light border">
-                    <span class="text-muted small">Total to Collect:</span>
+                    <span class="text-muted small">Cash to Collect (COD):</span>
                     <span class="fs-5 fw-extrabold text-success">${{ "%.2f"|format(order.total_price) }}</span>
                 </div>
-                <small class="text-muted d-block mt-1">Payment is collected as Cash on Delivery.</small>
             </div>
 
-            <!-- Complete Delivery Button -->
-            <form action="{{ url_for('driver_complete_delivery', order_id=order.id) }}" method="POST" onsubmit="return confirm('Confirm that this order has been handed over and delivered to the customer?');">
-                <button type="submit" class="btn btn-success btn-lg w-100 py-3 fw-bold fs-6">
-                    <i class="bi bi-check2-circle me-1"></i> Confirm Handed Over & Delivered
-                </button>
-            </form>
+            {% if order.customer_latitude and order.customer_longitude %}
+            <a href="https://www.google.com/maps/dir/?api=1&destination={{ order.customer_latitude }},{{ order.customer_longitude }}" 
+               target="_blank" class="btn btn-primary w-100 btn-sm fw-semibold">
+                <i class="bi bi-cursor-fill me-1"></i> Open Turn-by-Turn Navigation
+            </a>
+            {% endif %}
         </div>
     </div>
 
@@ -84,12 +164,13 @@
         <div class="dashboard-card shadow-sm p-3 h-100">
             <div class="d-flex justify-content-between align-items-center mb-2">
                 <h5 class="fw-bold mb-0 text-dark">
-                    <i class="bi bi-map-fill text-success me-2"></i>Live Route Navigation
+                    <i class="bi bi-map-fill text-success me-2"></i>Driver Route Navigation Map
                 </h5>
-                <span class="badge bg-light text-dark border">Leaflet / OpenStreetMap</span>
+                <span class="badge bg-light text-dark border">Live GPS Tracker</span>
             </div>
 
-            <div id="driver-map" style="height: 480px; border-radius: var(--radius-md); background: #eee;" class="border mt-3"></div>
+            <!-- Route Map Container -->
+            <div id="driver-map" style="height: 520px; border-radius: var(--radius-md); background: #eee;" class="border mt-3"></div>
         </div>
     </div>
 </div>
@@ -104,26 +185,90 @@
         document.addEventListener('DOMContentLoaded', () => {
             const customerLat = {{ order.customer_latitude or 'null' }};
             const customerLng = {{ order.customer_longitude or 'null' }};
+            const farmLat = {{ order.farm.latitude or 'null' if order.farm else 'null' }};
+            const farmLng = {{ order.farm.longitude or 'null' if order.farm else 'null' }};
             const orderId = '{{ order.id }}';
             const gpsStatusEl = document.getElementById('driver-gps-status');
 
-            if (!customerLat) {
-                document.getElementById('driver-map').innerHTML = "<div class='d-flex justify-content-center align-items-center h-100 text-muted'>Customer delivery coordinates not available. Navigate to street address.</div>";
-                return;
-            }
+            const socket = io();
 
-            const map = L.map('driver-map').setView([customerLat, customerLng], 14);
+            socket.on('connect', () => {
+                socket.emit('join_order_room', { order_id: orderId });
+            });
+
+            // If farmer verifies pickup while driver is on this screen, auto-advance!
+            socket.on('status_update', (data) => {
+                if (data.status === 'PICKED_UP' || data.status === 'DELIVERED') {
+                    window.location.reload();
+                }
+            });
+
+            const defaultLat = customerLat || farmLat || 12.9716;
+            const defaultLng = customerLng || farmLng || 77.5946;
+
+            const map = L.map('driver-map').setView([defaultLat, defaultLng], 13);
             L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                attribution: '&copy; OpenStreetMap contributors'
+                attribution: '&copy; OpenStreetMap contributors',
+                maxZoom: 19
             }).addTo(map);
 
-            L.marker([customerLat, customerLng]).addTo(map)
-                .bindPopup('<b>Customer Destination</b><br>{{ order.customer_address }}')
-                .openPopup();
-                
-            let driverMarker = null;
-            var socket = io();
+            const boundsGroup = [];
 
+            // Farm Marker
+            if (farmLat && farmLng) {
+                const farmMarker = L.marker([farmLat, farmLng], {
+                    icon: L.divIcon({
+                        className: 'custom-map-icon',
+                        html: '<div style="background:#16a34a;color:#fff;width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;box-shadow:0 3px 8px rgba(0,0,0,0.3);border:2px solid #fff;"><i class="bi bi-tree-fill"></i></div>',
+                        iconSize: [34, 34],
+                        iconAnchor: [17, 17]
+                    })
+                }).addTo(map).bindPopup('<b>Origin Farm</b><br>{{ order.farm.name if order.farm else "Farm" }}');
+                boundsGroup.push([farmLat, farmLng]);
+            }
+
+            // Customer Marker
+            if (customerLat && customerLng) {
+                const custMarker = L.marker([customerLat, customerLng], {
+                    icon: L.divIcon({
+                        className: 'custom-map-icon',
+                        html: '<div style="background:#dc2626;color:#fff;width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;box-shadow:0 3px 8px rgba(0,0,0,0.3);border:2px solid #fff;"><i class="bi bi-house-door-fill"></i></div>',
+                        iconSize: [34, 34],
+                        iconAnchor: [17, 17]
+                    })
+                }).addTo(map).bindPopup('<b>Customer Destination</b><br>{{ order.customer_address }}');
+                boundsGroup.push([customerLat, customerLng]);
+            }
+
+            if (boundsGroup.length > 0) {
+                map.fitBounds(boundsGroup, { padding: [50, 50] });
+            }
+
+            let driverMarker = null;
+            let navPolyline = null;
+
+            function updateRoutePolyline(dLat, dLng) {
+                const points = [[dLat, dLng]];
+                if (customerLat && customerLng) {
+                    points.push([customerLat, customerLng]);
+                }
+                if (navPolyline) map.removeLayer(navPolyline);
+                navPolyline = L.polyline(points, {
+                    color: '#2563eb',
+                    weight: 4,
+                    opacity: 0.8,
+                    dashArray: '8, 8'
+                }).addTo(map);
+            }
+
+            const vehicleIcon = L.divIcon({
+                className: 'custom-map-icon',
+                html: '<div class="radar-marker"><div style="background:#2563eb;color:#fff;width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;box-shadow:0 3px 10px rgba(37,99,235,0.4);border:2px solid #fff;margin:-6px 0 0 -6px;"><i class="bi bi-truck" style="font-size:1.1rem;"></i></div></div>',
+                iconSize: [34, 34],
+                iconAnchor: [17, 17]
+            });
+
+            // Live Geolocation Streaming
             if (navigator.geolocation) {
                 navigator.geolocation.watchPosition((position) => {
                     const lat = position.coords.latitude;
@@ -140,20 +285,22 @@
                     });
 
                     if (!driverMarker) {
-                        driverMarker = L.marker([lat, lng]).addTo(map);
+                        driverMarker = L.marker([lat, lng], { icon: vehicleIcon }).addTo(map)
+                            .bindPopup('<b>Your Current Vehicle Position</b>').openPopup();
                     } else {
                         driverMarker.setLatLng([lat, lng]);
                     }
-                    driverMarker.bindPopup('<b>Your Current Position</b>').openPopup();
+
+                    updateRoutePolyline(lat, lng);
                 }, (err) => {
                     console.warn('Driver geolocation error:', err.message);
                     if (gpsStatusEl) {
-                        gpsStatusEl.innerText = "Location tracking note: Permission not granted or GPS unavailable.";
+                        gpsStatusEl.innerText = "Location notice: Using standard GPS coordinates.";
                     }
                 }, {
                     enableHighAccuracy: true,
-                    maximumAge: 10000,
-                    timeout: 10000
+                    maximumAge: 5000,
+                    timeout: 8000
                 });
             }
         });

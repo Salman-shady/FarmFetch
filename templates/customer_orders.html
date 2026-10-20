@@ -56,21 +56,8 @@
                                 <span class="fw-bold text-dark">${{ "%.2f"|format(order.total_price) }}</span>
                             </td>
                             <td>
-                                <span class="status-pill status-{{ order.status | replace(' ', '-') }}">
-                                    {% if order.status == 'Placed' %}
-                                        <i class="bi bi-clock-history"></i>
-                                    {% elif order.status == 'Preparing' %}
-                                        <i class="bi bi-gear-wide-connected"></i>
-                                    {% elif order.status == 'Ready for Pickup' %}
-                                        <i class="bi bi-box-seam"></i>
-                                    {% elif order.status == 'Picked Up' %}
-                                        <i class="bi bi-truck"></i>
-                                    {% elif order.status == 'Delivered' %}
-                                        <i class="bi bi-check2-circle"></i>
-                                    {% else %}
-                                        <i class="bi bi-x-circle"></i>
-                                    {% endif %}
-                                    {{ order.status }}
+                                <span class="status-pill {{ order.status_css_class }}">
+                                    {{ order.status_display }}
                                 </span>
                             </td>
                             <td class="text-end">
