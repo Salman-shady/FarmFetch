@@ -1,0 +1,238 @@
+{% extends "admin/layout.html" %}
+
+{% block admin_content %}
+<div class="d-flex flex-wrap justify-content-between align-items-center mb-4 gap-3">
+    <div>
+        <h2 class="h3 fw-bold text-dark mb-1">Farm Verification Queue</h2>
+        <p class="text-muted small mb-0">Review submitted farm profiles, location details, and state agricultural licenses.</p>
+    </div>
+    <span class="badge bg-success-subtle text-success px-3 py-2 rounded-pill">
+        Manual Admin Review Process
+    </span>
+</div>
+
+<!-- Filter Pills & Search Form -->
+<div class="card border-0 shadow-sm rounded-4 p-3 bg-white mb-4">
+    <div class="row g-3 align-items-center">
+        <!-- Filter Pills -->
+        <div class="col-lg-8">
+            <div class="d-flex flex-wrap gap-2">
+                <a href="{{ url_for('admin_farm_verifications', status='ALL', q=search_q) }}" 
+                   class="btn btn-sm rounded-pill px-3 {% if status_filter == 'ALL' %}btn-dark{% else %}btn-outline-secondary{% endif %}">
+                    All Farms ({{ counts.ALL }})
+                </a>
+                <a href="{{ url_for('admin_farm_verifications', status='PENDING', q=search_q) }}" 
+                   class="btn btn-sm rounded-pill px-3 {% if status_filter == 'PENDING' %}btn-warning text-dark fw-bold{% else %}btn-outline-warning text-dark{% endif %}">
+                    Pending Review ({{ counts.PENDING }})
+                </a>
+                <a href="{{ url_for('admin_farm_verifications', status='APPROVED', q=search_q) }}" 
+                   class="btn btn-sm rounded-pill px-3 {% if status_filter == 'APPROVED' %}btn-success text-white fw-bold{% else %}btn-outline-success{% endif %}">
+                    Approved ({{ counts.APPROVED }})
+                </a>
+                <a href="{{ url_for('admin_farm_verifications', status='NEEDS_MORE_INFORMATION', q=search_q) }}" 
+                   class="btn btn-sm rounded-pill px-3 {% if status_filter == 'NEEDS_MORE_INFORMATION' %}btn-info text-white fw-bold{% else %}btn-outline-info{% endif %}">
+                    Needs Info ({{ counts.NEEDS_MORE_INFORMATION }})
+                </a>
+                <a href="{{ url_for('admin_farm_verifications', status='REJECTED', q=search_q) }}" 
+                   class="btn btn-sm rounded-pill px-3 {% if status_filter == 'REJECTED' %}btn-danger text-white fw-bold{% else %}btn-outline-danger{% endif %}">
+                    Rejected ({{ counts.REJECTED }})
+                </a>
+            </div>
+        </div>
+
+        <!-- Search Bar -->
+        <div class="col-lg-4">
+            <form method="GET" action="{{ url_for('admin_farm_verifications') }}">
+                <input type="hidden" name="status" value="{{ status_filter }}">
+                <div class="input-group">
+                    <input type="text" name="q" value="{{ search_q }}" class="form-control form-control-sm rounded-start-pill ps-3" placeholder="Search farm name or address...">
+                    <button class="btn btn-sm btn-success rounded-end-pill px-3" type="submit">
+                        <i class="bi bi-search"></i>
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Farms Table -->
+<div class="card border-0 shadow-sm rounded-4 overflow-hidden bg-white mb-4">
+    {% if pagination.items %}
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="table-light text-muted small text-uppercase">
+                    <tr>
+                        <th class="ps-4">Farm Details</th>
+                        <th>Farmer User</th>
+                        <th>License & Documents</th>
+                        <th>Verification Status</th>
+                        <th>Reviewer & Notes</th>
+                        <th class="text-end pe-4">Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for farm in pagination.items %}
+                        <tr>
+                            <td class="ps-4">
+                                <div class="fw-bold text-dark">{{ farm.name }}</div>
+                                <small class="text-muted d-block text-truncate" style="max-width: 200px;">
+                                    <i class="bi bi-geo-alt me-1"></i>{{ farm.address or 'Address not specified' }}
+                                </small>
+                                <span class="badge bg-light text-secondary border mt-1" style="font-size: 0.68rem;">
+                                    {{ farm.farm_type or 'General Produce' }}
+                                </span>
+                            </td>
+                            <td>
+                                {% if farm.user %}
+                                    <div class="fw-semibold text-dark small">{{ farm.user.name or farm.user.email.split('@')[0] }}</div>
+                                    <small class="text-muted">{{ farm.user.email }}</small>
+                                {% else %}
+                                    <span class="text-muted small">User ID #{{ farm.user_id }}</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if farm.license_number %}
+                                    <span class="badge bg-secondary-subtle text-dark border font-monospace">
+                                        <i class="bi bi-file-earmark-check me-1"></i>{{ farm.license_number }}
+                                    </span>
+                                {% else %}
+                                    <span class="badge bg-light text-muted border">No License Provided</span>
+                                {% endif %}
+                                <small class="d-block text-muted mt-1" style="font-size: 0.72rem;">Manual review basis</small>
+                            </td>
+                            <td>
+                                {% set st = farm.verification_status %}
+                                {% if st == 'APPROVED' %}
+                                    <span class="badge bg-success text-white px-2 py-1 rounded-pill">
+                                        <i class="bi bi-patch-check-fill me-1"></i>Approved
+                                    </span>
+                                {% elif st == 'PENDING' %}
+                                    <span class="badge bg-warning text-dark px-2 py-1 rounded-pill">
+                                        <i class="bi bi-hourglass-split me-1"></i>Pending Review
+                                    </span>
+                                {% elif st == 'NEEDS_MORE_INFORMATION' %}
+                                    <span class="badge bg-info text-white px-2 py-1 rounded-pill">
+                                        <i class="bi bi-question-circle me-1"></i>Needs Information
+                                    </span>
+                                {% elif st == 'REJECTED' %}
+                                    <span class="badge bg-danger text-white px-2 py-1 rounded-pill">
+                                        <i class="bi bi-x-circle me-1"></i>Rejected
+                                    </span>
+                                {% else %}
+                                    <span class="badge bg-secondary text-white px-2 py-1 rounded-pill">{{ st }}</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if farm.verified_by %}
+                                    <small class="d-block text-muted" style="font-size: 0.75rem;">
+                                        By: {{ farm.verified_by }}
+                                    </small>
+                                {% endif %}
+                                {% if farm.verification_notes %}
+                                    <small class="d-block text-dark text-truncate" style="max-width: 180px; font-size: 0.75rem;" title="{{ farm.verification_notes }}">
+                                        "{{ farm.verification_notes }}"
+                                    </small>
+                                {% else %}
+                                    <span class="text-muted small">&mdash;</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-end pe-4">
+                                <button type="button" class="btn btn-sm btn-outline-success rounded-pill px-3" data-bs-toggle="modal" data-bs-target="#verifyModal{{ farm.id }}">
+                                    <i class="bi bi-pencil-square me-1"></i>Review
+                                </button>
+                            </td>
+                        </tr>
+
+                        <!-- Decision Modal for this Farm -->
+                        <div class="modal fade" id="verifyModal{{ farm.id }}" tabindex="-1" aria-labelledby="verifyModalLabel{{ farm.id }}" aria-hidden="true">
+                            <div class="modal-dialog modal-dialog-centered">
+                                <div class="modal-content rounded-4 border-0 shadow">
+                                    <form method="POST" action="{{ url_for('admin_verify_farm', farm_id=farm.id) }}">
+                                        <div class="modal-header border-0 pb-0">
+                                            <h5 class="modal-title fw-bold" id="verifyModalLabel{{ farm.id }}">
+                                                Review Farm: {{ farm.name }}
+                                            </h5>
+                                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                                        </div>
+                                        <div class="modal-body py-3">
+                                            <div class="p-3 bg-light rounded-3 mb-3">
+                                                <div class="row g-2 small">
+                                                    <div class="col-6"><strong>Address:</strong> {{ farm.address or 'N/A' }}</div>
+                                                    <div class="col-6"><strong>License:</strong> {{ farm.license_number or 'None' }}</div>
+                                                    <div class="col-6"><strong>Current Status:</strong> {{ farm.verification_status }}</div>
+                                                    <div class="col-6"><strong>Produce Count:</strong> {{ farm.produce_items|length }} items</div>
+                                                </div>
+                                            </div>
+
+                                            <div class="mb-3">
+                                                <label class="form-label fw-semibold small">Decision Action</label>
+                                                <div class="d-flex flex-column gap-2">
+                                                    <div class="form-check p-3 border rounded-3 bg-success-subtle border-success-subtle">
+                                                        <input class="form-check-input" type="radio" name="action" id="act_app_{{ farm.id }}" value="approve" {% if farm.verification_status != 'APPROVED' %}checked{% endif %}>
+                                                        <label class="form-check-label fw-bold text-success" for="act_app_{{ farm.id }}">
+                                                            Approve Farm Verification
+                                                            <small class="d-block text-muted fw-normal">Enables farm to publish produce and receive customer orders.</small>
+                                                        </label>
+                                                    </div>
+
+                                                    <div class="form-check p-3 border rounded-3 bg-info-subtle border-info-subtle">
+                                                        <input class="form-check-input" type="radio" name="action" id="act_info_{{ farm.id }}" value="request_info">
+                                                        <label class="form-check-label fw-bold text-info" for="act_info_{{ farm.id }}">
+                                                            Request More Information
+                                                            <small class="d-block text-muted fw-normal">Farmer will be requested to provide valid licenses or address clarification.</small>
+                                                        </label>
+                                                    </div>
+
+                                                    <div class="form-check p-3 border rounded-3 bg-danger-subtle border-danger-subtle">
+                                                        <input class="form-check-input" type="radio" name="action" id="act_rej_{{ farm.id }}" value="reject">
+                                                        <label class="form-check-label fw-bold text-danger" for="act_rej_{{ farm.id }}">
+                                                            Reject Farm Verification
+                                                            <small class="d-block text-muted fw-normal">Blocks marketplace sales while preserving existing profile data.</small>
+                                                        </label>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <div class="mb-3">
+                                                <label class="form-label fw-semibold small">Administrative Notes / Justification Reason</label>
+                                                <textarea name="notes" class="form-control rounded-3" rows="3" placeholder="Provide reason or feedback to the farmer..." required>{{ farm.verification_notes or '' }}</textarea>
+                                            </div>
+                                        </div>
+                                        <div class="modal-footer border-0 pt-0">
+                                            <button type="button" class="btn btn-secondary rounded-pill px-3" data-bs-dismiss="modal">Cancel</button>
+                                            <button type="submit" class="btn btn-success rounded-pill px-4">Save Decision</button>
+                                        </div>
+                                    </form>
+                                </div>
+                            </div>
+                        </div>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Pagination Controls -->
+        {% if pagination.total_pages > 1 %}
+            <div class="p-3 border-top d-flex justify-content-between align-items-center">
+                <small class="text-muted">
+                    Showing page {{ pagination.page }} of {{ pagination.total_pages }} ({{ pagination.total_count }} total farms)
+                </small>
+                <div class="btn-group btn-group-sm">
+                    {% if pagination.has_prev %}
+                        <a href="{{ url_for('admin_farm_verifications', status=status_filter, q=search_q, page=pagination.prev_page) }}" class="btn btn-outline-secondary">Previous</a>
+                    {% endif %}
+                    {% if pagination.has_next %}
+                        <a href="{{ url_for('admin_farm_verifications', status=status_filter, q=search_q, page=pagination.next_page) }}" class="btn btn-outline-secondary">Next</a>
+                    {% endif %}
+                </div>
+            </div>
+        {% endif %}
+    {% else %}
+        <div class="text-center py-5 text-muted">
+            <i class="bi bi-patch-check fs-1 text-secondary d-block mb-2"></i>
+            <h5 class="fw-bold text-dark">No farms found</h5>
+            <p class="small mb-0">No farm profiles match the selected verification filter.</p>
+        </div>
+    {% endif %}
+</div>
+{% endblock %}

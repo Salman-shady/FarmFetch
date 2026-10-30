@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+
+{% block title %}Dispute Case #{{ complaint.id }} - FarmFetch{% endblock %}
+
+{% block content %}
+<div class="container py-4" style="max-width: 760px;">
+    <!-- Back to order button -->
+    <a href="{{ url_for('order_details', order_id=complaint.order_id) }}" class="btn btn-outline-secondary btn-sm rounded-pill px-3 mb-3">
+        <i class="bi bi-arrow-left me-1"></i> Back to Order #{{ complaint.order_id }}
+    </a>
+
+    <div class="card border-0 shadow-sm rounded-4 p-4 p-md-5 bg-white">
+        <!-- Status Header -->
+        <div class="d-flex flex-wrap justify-content-between align-items-center mb-4 gap-2 pb-3 border-bottom">
+            <div>
+                <span class="badge bg-secondary-subtle text-dark border mb-1">Dispute Tracking</span>
+                <h1 class="h3 fw-bold text-dark mb-0">Case #{{ complaint.id }}</h1>
+                <small class="text-muted">Linked to Order #{{ complaint.order_id }} &bull; Reported {{ complaint.created_at_display or 'Recently' }}</small>
+            </div>
+            <div>
+                {% if complaint.status == 'OPEN' %}
+                    <span class="badge bg-danger text-white px-3 py-2 rounded-pill fs-6">
+                        <i class="bi bi-exclamation-circle me-1"></i>Status: Open
+                    </span>
+                {% elif complaint.status == 'UNDER_REVIEW' %}
+                    <span class="badge bg-warning text-dark px-3 py-2 rounded-pill fs-6">
+                        <i class="bi bi-hourglass-split me-1"></i>Status: Under Investigation
+                    </span>
+                {% elif complaint.status == 'RESOLVED' %}
+                    <span class="badge bg-success text-white px-3 py-2 rounded-pill fs-6">
+                        <i class="bi bi-check-circle-fill me-1"></i>Status: Resolved
+                    </span>
+                {% elif complaint.status == 'REJECTED' %}
+                    <span class="badge bg-secondary text-white px-3 py-2 rounded-pill fs-6">
+                        <i class="bi bi-x-circle me-1"></i>Status: Closed / Rejected
+                    </span>
+                {% else %}
+                    <span class="badge bg-light text-dark px-3 py-2 rounded-pill fs-6">{{ complaint.status }}</span>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Issue Summary -->
+        <div class="mb-4">
+            <h2 class="h6 fw-bold text-dark mb-2">Reported Issue Details</h2>
+            <div class="p-3 bg-light rounded-3 border">
+                <span class="badge bg-secondary text-white mb-2">{{ complaint.category }}</span>
+                <p class="mb-0 text-dark" style="white-space: pre-wrap;">{{ complaint.description }}</p>
+            </div>
+        </div>
+
+        <!-- Administrative Resolution Notes -->
+        <div class="mb-4">
+            <h2 class="h6 fw-bold text-dark mb-2">Resolution Findings & Support Notes</h2>
+            {% if complaint.admin_notes %}
+                <div class="p-3 bg-success-subtle border border-success-subtle rounded-3 text-dark">
+                    <div class="fw-semibold text-success mb-1">
+                        <i class="bi bi-patch-check-fill me-1"></i>Administrative Resolution Notes
+                    </div>
+                    <p class="mb-0" style="white-space: pre-wrap;">{{ complaint.admin_notes }}</p>
+                    {% if complaint.resolved_at %}
+                        <small class="text-muted d-block mt-2" style="font-size: 0.72rem;">
+                            Decision recorded on {{ complaint.resolved_at.strftime('%b %d, %Y %I:%M %p') }}
+                        </small>
+                    {% endif %}
+                </div>
+            {% else %}
+                <div class="p-3 bg-light rounded-3 text-muted small border">
+                    <i class="bi bi-clock me-1"></i>Our operations team has received your report and is reviewing with the origin farm. Resolution updates will appear here once finalized.
+                </div>
+            {% endif %}
+        </div>
+
+        <!-- Order Information Footer -->
+        <div class="p-3 bg-light rounded-3 small text-muted border">
+            <div class="row g-2">
+                <div class="col-sm-6">
+                    <strong>Order Reference:</strong> #{{ complaint.order_id }}
+                </div>
+                <div class="col-sm-6">
+                    <strong>Customer Account:</strong> {{ complaint.customer_email }}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

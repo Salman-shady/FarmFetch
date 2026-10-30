@@ -31,10 +31,18 @@
                 </span>
             </p>
         </div>
-        <div class="d-flex gap-2 align-items-center">
+        <div class="d-flex flex-wrap gap-2 align-items-center">
             {% if current_user.role == 'customer' %}
                 <a href="{{ url_for('my_orders') }}" class="btn btn-outline-primary btn-sm">
                     <i class="bi bi-arrow-left"></i> My Orders
+                </a>
+                {% if order.status in ['DELIVERED', 'Delivered'] and not farm_review %}
+                    <a href="{{ url_for('submit_order_review', order_id=order.id) }}" class="btn btn-warning btn-sm rounded-pill px-3 fw-bold text-dark shadow-xs">
+                        <i class="bi bi-star-fill text-dark me-1"></i> Rate & Review
+                    </a>
+                {% endif %}
+                <a href="{{ url_for('submit_order_complaint', order_id=order.id) }}" class="btn btn-outline-danger btn-sm rounded-pill px-3">
+                    <i class="bi bi-shield-exclamation me-1"></i> Report Issue
                 </a>
             {% elif current_user.role == 'farmer' %}
                 <a href="{{ url_for('farm_orders') }}" class="btn btn-outline-primary btn-sm">
@@ -44,10 +52,66 @@
                 <a href="{{ url_for('driver_dashboard') }}" class="btn btn-outline-primary btn-sm">
                     <i class="bi bi-arrow-left"></i> Driver Dashboard
                 </a>
+            {% elif current_user.role == 'admin' %}
+                <a href="{{ url_for('admin_dashboard') }}" class="btn btn-outline-danger btn-sm">
+                    <i class="bi bi-speedometer2"></i> Admin Panel
+                </a>
             {% endif %}
         </div>
     </div>
 </div>
+
+<!-- Active Complaints / Dispute Banner -->
+{% if complaints %}
+    {% for comp in complaints %}
+        <div class="alert alert-warning border-0 shadow-sm rounded-4 p-3 mb-4 d-flex justify-content-between align-items-center">
+            <div class="d-flex align-items-center gap-3">
+                <i class="bi bi-shield-exclamation fs-3 text-warning"></i>
+                <div>
+                    <h6 class="fw-bold mb-0 text-dark">Active Dispute Report: Case #{{ comp._id or comp.id }}</h6>
+                    <small class="text-muted">{{ comp.category }} &bull; Status: <span class="badge bg-warning text-dark">{{ comp.status }}</span></small>
+                </div>
+            </div>
+            <a href="{{ url_for('view_complaint', complaint_id=comp._id or comp.id) }}" class="btn btn-sm btn-outline-dark rounded-pill px-3">
+                View Dispute Details <i class="bi bi-arrow-right"></i>
+            </a>
+        </div>
+    {% endfor %}
+{% endif %}
+
+<!-- Review Submitted Confirmation Box -->
+{% if farm_review %}
+    <div class="card border-0 shadow-sm rounded-4 p-3 mb-4 bg-white">
+        <div class="d-flex justify-content-between align-items-center">
+            <div class="d-flex align-items-center gap-2">
+                <span class="badge bg-warning-subtle text-dark p-2 rounded-circle">
+                    <i class="bi bi-star-fill text-warning"></i>
+                </span>
+                <div>
+                    <div class="fw-bold text-dark small">Your Review for {{ order.farm.name if order.farm else 'Farm' }}</div>
+                    <div class="text-warning" style="font-size: 0.8rem;">
+                        {% for i in range(1, 6) %}
+                            {% if i <= farm_review.rating %}
+                                <i class="bi bi-star-fill"></i>
+                            {% else %}
+                                <i class="bi bi-star"></i>
+                            {% endif %}
+                        {% endfor %}
+                        <span class="text-muted ms-1">({{ farm_review.rating }}/5)</span>
+                    </div>
+                </div>
+            </div>
+            {% if farm_review.comment %}
+                <small class="text-muted fst-italic text-truncate d-none d-md-block" style="max-width: 300px;">
+                    "{{ farm_review.comment }}"
+                </small>
+            {% endif %}
+            <span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill px-2 py-1 small">
+                Verified Review
+            </span>
+        </div>
+    </div>
+{% endif %}
 
 <!-- Alert for Cancelled or Delivery Failed Orders -->
 {% if order.status in ['CANCELLED', 'Cancelled', 'Rejected'] %}
@@ -321,9 +385,9 @@
                             <td>
                                 <span class="badge bg-light text-dark border px-2 py-1">{{ item.quantity }}</span>
                             </td>
-                            <td>${{ "%.2f"|format(item.price_per_item) }}</td>
+                            <td>₹{{ "%.2f"|format(item.price_per_item) }}</td>
                             <td class="text-end fw-bold text-dark">
-                                ${{ "%.2f"|format(item.price_per_item * item.quantity) }}
+                                ₹{{ "%.2f"|format(item.price_per_item * item.quantity) }}
                             </td>
                         </tr>
                         {% endfor %}
@@ -347,7 +411,7 @@
                 </div>
                 <div class="text-end">
                     <span class="text-muted small me-2">Grand Total:</span>
-                    <span class="fs-4 fw-extrabold text-success">${{ "%.2f"|format(order.total_price) }}</span>
+                    <span class="fs-4 fw-extrabold text-success">₹{{ "%.2f"|format(order.total_price) }}</span>
                 </div>
             </div>
         </div>
@@ -911,7 +975,12 @@
             // Receive live GPS broadcasts from driver
             socket.on('customer_location_update', (loc) => {
                 if (loc && loc.lat != null && loc.lng != null) {
-                    const ts = loc.timestamp ? new Date(loc.timestamp * 1000).toLocaleTimeString() : new Date().toLocaleTimeString();
+                    let ts = new Date().toLocaleTimeString();
+                    if (typeof loc.timestamp === 'string') {
+                        ts = loc.timestamp;
+                    } else if (typeof loc.timestamp === 'number') {
+                        ts = new Date(loc.timestamp * 1000).toLocaleTimeString();
+                    }
                     updateDriverLocation(loc.lat, loc.lng, ts, false);
                 }
             });

@@ -1,0 +1,232 @@
+{% extends "admin/layout.html" %}
+
+{% block admin_content %}
+<!-- Settings Header -->
+<div class="d-flex flex-wrap justify-content-between align-items-center mb-4 gap-3">
+    <div>
+        <h2 class="h3 fw-bold text-dark mb-1">Platform Settings & Operational Rates</h2>
+        <p class="text-muted small mb-0">Configure marketplace commission, driver compensation rules, and system calculation parameters.</p>
+    </div>
+    <div class="d-flex align-items-center gap-2">
+        <span class="badge bg-success-subtle text-success px-3 py-2 rounded-pill border border-success-subtle">
+            <i class="bi bi-shield-check me-1"></i> Admin Privileges Active
+        </span>
+    </div>
+</div>
+
+<div class="row g-4">
+    <!-- Driver Earnings Configuration Card -->
+    <div class="col-xl-7 col-lg-12">
+        <div class="card border-0 shadow-sm rounded-4 p-4 bg-white mb-4">
+            <div class="d-flex justify-content-between align-items-start mb-3">
+                <div class="d-flex align-items-center gap-3">
+                    <div class="rounded-3 p-3 bg-emerald-subtle text-emerald" style="background:#d1fae5; color:#065f46; font-size:1.5rem;">
+                        <i class="bi bi-cash-coin"></i>
+                    </div>
+                    <div>
+                        <h4 class="h5 fw-bold text-dark mb-1">Driver Earnings Rule Configuration</h4>
+                        <p class="text-muted small mb-0">Sets the payable rate per road kilometre for couriers.</p>
+                    </div>
+                </div>
+                <span class="badge bg-primary-subtle text-primary border border-primary-subtle rounded-pill px-3 py-2 fw-bold fs-6">
+                    ₹{{ "%.2f"|format(driver_rate_per_km) }} / km
+                </span>
+            </div>
+
+            <!-- Current Formula Card -->
+            <div class="p-3 rounded-4 mb-4" style="background: linear-gradient(135deg, #f0fdf4 0%, #e0f2fe 100%); border: 1px solid #bae6fd;">
+                <div class="fw-bold text-dark small mb-2 text-uppercase" style="letter-spacing: 0.05em;">
+                    <i class="bi bi-calculator me-1 text-primary"></i> Active Earning Formula:
+                </div>
+                <div class="row g-2 small text-dark">
+                    <div class="col-md-6">
+                        <div class="p-2 bg-white rounded-3 shadow-xs border">
+                            <span class="fw-semibold text-muted d-block" style="font-size:0.75rem;">1. PICKUP JOURNEY (Driver &rarr; Farm)</span>
+                            <div class="fw-bold mt-1">Pickup km &times; ₹<span class="active-rate-text">{{ "%.2f"|format(driver_rate_per_km) }}</span></div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="p-2 bg-white rounded-3 shadow-xs border">
+                            <span class="fw-semibold text-muted d-block" style="font-size:0.75rem;">2. DELIVERY JOURNEY (Farm &rarr; Customer)</span>
+                            <div class="fw-bold mt-1">Drop km &times; ₹<span class="active-rate-text">{{ "%.2f"|format(driver_rate_per_km) }}</span></div>
+                        </div>
+                    </div>
+                    <div class="col-12 mt-2">
+                        <div class="p-2 bg-white rounded-3 shadow-xs border d-flex justify-content-between align-items-center">
+                            <span class="fw-bold text-success"><i class="bi bi-plus-circle me-1"></i> Total Driver Earning:</span>
+                            <span class="badge bg-success text-white px-2 py-1">Pickup Earning + Drop Earning</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Rate Update Form -->
+            <form action="{{ url_for('admin_update_driver_rate') }}" method="POST" class="mb-4">
+                <label for="rate-input" class="form-label fw-bold text-dark">
+                    Update Driver Earning Rate (₹ per km)
+                </label>
+                <div class="input-group mb-2">
+                    <span class="input-group-text bg-light fw-bold text-dark fs-5">₹</span>
+                    <input type="number" id="rate-input" name="rate" class="form-control form-control-lg fw-bold text-primary" 
+                           step="0.25" min="0.5" max="100.0" value="{{ driver_rate_per_km }}" required>
+                    <span class="input-group-text bg-light text-muted">per km</span>
+                    <button type="submit" class="btn btn-success px-4 fw-bold">
+                        <i class="bi bi-check2-circle me-1"></i> Save Configuration
+                    </button>
+                </div>
+                <div class="form-text text-muted small">
+                    <i class="bi bi-info-circle me-1"></i> Changes take effect immediately for upcoming and active deliveries. Finalized deliveries are immutably archived.
+                </div>
+            </form>
+
+            <hr class="my-4">
+
+            <!-- Interactive Live Earnings Simulator -->
+            <div>
+                <h5 class="h6 fw-bold text-dark mb-2"><i class="bi bi-sliders me-1 text-primary"></i> Live Formula Calculator / Preview</h5>
+                <p class="text-muted small mb-3">Test simulated distances to preview how couriers will be compensated under this rate.</p>
+
+                <div class="row g-3 p-3 bg-light rounded-4 border">
+                    <div class="col-sm-6">
+                        <label class="form-label small fw-semibold text-muted">Pickup Distance (Driver to Farm):</label>
+                        <div class="input-group input-group-sm">
+                            <input type="number" id="sim-pickup-km" class="form-control fw-bold" value="3.0" step="0.1" min="0">
+                            <span class="input-group-text">km</span>
+                        </div>
+                    </div>
+                    <div class="col-sm-6">
+                        <label class="form-label small fw-semibold text-muted">Drop Distance (Farm to Customer):</label>
+                        <div class="input-group input-group-sm">
+                            <input type="number" id="sim-drop-km" class="form-control fw-bold" value="5.0" step="0.1" min="0">
+                            <span class="input-group-text">km</span>
+                        </div>
+                    </div>
+
+                    <div class="col-12 mt-3 pt-2 border-top">
+                        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+                            <div>
+                                <small class="text-muted d-block">Calculation Breakdown:</small>
+                                <span class="small text-dark">
+                                    Pickup: <span id="sim-p-dist">3.0</span> km &times; ₹<span id="sim-rate-p">{{ "%.2f"|format(driver_rate_per_km) }}</span> = <strong>₹<span id="sim-p-earn">9.00</span></strong> | 
+                                    Drop: <span id="sim-d-dist">5.0</span> km &times; ₹<span id="sim-rate-d">{{ "%.2f"|format(driver_rate_per_km) }}</span> = <strong>₹<span id="sim-d-earn">15.00</span></strong>
+                                </span>
+                            </div>
+                            <div class="text-end">
+                                <small class="text-muted d-block">Total Driver Earning (<span id="sim-tot-km">8.0</span> payable km):</small>
+                                <span class="fs-4 fw-bold text-success">₹<span id="sim-total-earn">24.00</span></span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Right Column: Disbursed Stats & Audit Trail -->
+    <div class="col-xl-5 col-lg-12">
+        <!-- Payout Analytics Card -->
+        <div class="card border-0 shadow-sm rounded-4 p-4 bg-white mb-4">
+            <h5 class="h6 fw-bold text-dark mb-3"><i class="bi bi-wallet2 text-success me-2"></i>Courier Payout Aggregates</h5>
+            
+            <div class="row g-3 mb-3">
+                <div class="col-6">
+                    <div class="p-3 bg-light rounded-3">
+                        <small class="text-muted d-block mb-1">Total Payouts Finalized</small>
+                        <div class="fs-4 fw-bold text-dark">₹{{ "%.2f"|format(total_payouts_disbursed) }}</div>
+                        <small class="text-success small"><i class="bi bi-check-all"></i> Server Verified</small>
+                    </div>
+                </div>
+                <div class="col-6">
+                    <div class="p-3 bg-light rounded-3">
+                        <small class="text-muted d-block mb-1">Total Payable Road KM</small>
+                        <div class="fs-4 fw-bold text-primary">{{ "%.2f"|format(total_payable_km_disbursed) }} <span class="fs-6 text-muted">km</span></div>
+                        <small class="text-muted small">Pickup + Drop legs</small>
+                    </div>
+                </div>
+            </div>
+
+            <div class="p-3 rounded-3" style="background:#f8fafc; border:1px solid #e2e8f0;">
+                <div class="d-flex justify-content-between align-items-center small mb-1">
+                    <span class="text-muted">Completed Deliveries with Payouts:</span>
+                    <strong class="text-dark">{{ payouts_count }} deliveries</strong>
+                </div>
+                <div class="d-flex justify-content-between align-items-center small mb-1">
+                    <span class="text-muted">Average Payout per Delivery:</span>
+                    <strong class="text-dark">₹{{ "%.2f"|format((total_payouts_disbursed / payouts_count) if payouts_count > 0 else 0.0) }}</strong>
+                </div>
+                <div class="d-flex justify-content-between align-items-center small">
+                    <span class="text-muted">Idempotency Duplicate Prevention:</span>
+                    <span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill">100% Enforced</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Audit Trail Card -->
+        <div class="card border-0 shadow-sm rounded-4 p-4 bg-white mb-4">
+            <h5 class="h6 fw-bold text-dark mb-3"><i class="bi bi-journal-check text-primary me-2"></i>Rate Configuration Audit Trail</h5>
+            {% if rate_logs %}
+            <div class="list-group list-group-flush small">
+                {% for log in rate_logs %}
+                <div class="list-group-item px-0 py-2 border-bottom">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <span class="fw-bold text-dark">{{ log.actor_email }}</span>
+                        <span class="text-muted" style="font-size:0.75rem;">
+                            {{ log.timestamp.strftime('%b %d, %I:%M %p') if log.timestamp and log.timestamp.strftime else 'Recently' }}
+                        </span>
+                    </div>
+                    <div class="text-muted">{{ log.details }}</div>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <p class="text-muted small mb-0">No custom rate changes recorded yet. Default platform rate is ₹3.00/km.</p>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function() {
+    'use strict';
+    var rateInput = document.getElementById('rate-input');
+    var pKmInput = document.getElementById('sim-pickup-km');
+    var dKmInput = document.getElementById('sim-drop-km');
+
+    var simPdist = document.getElementById('sim-p-dist');
+    var simRateP = document.getElementById('sim-rate-p');
+    var simPearn = document.getElementById('sim-p-earn');
+    var simDdist = document.getElementById('sim-d-dist');
+    var simRateD = document.getElementById('sim-rate-d');
+    var simDearn = document.getElementById('sim-d-earn');
+    var simTotKm = document.getElementById('sim-tot-km');
+    var simTotEarn = document.getElementById('sim-total-earn');
+
+    function updateSim() {
+        var rate = parseFloat(rateInput.value) || 3.0;
+        var pKm = parseFloat(pKmInput.value) || 0.0;
+        var dKm = parseFloat(dKmInput.value) || 0.0;
+
+        var pEarn = pKm * rate;
+        var dEarn = dKm * rate;
+        var totKm = pKm + dKm;
+        var totEarn = pEarn + dEarn;
+
+        if (simPdist) simPdist.textContent = pKm.toFixed(1);
+        if (simRateP) simRateP.textContent = rate.toFixed(2);
+        if (simPearn) simPearn.textContent = pEarn.toFixed(2);
+        if (simDdist) simDdist.textContent = dKm.toFixed(1);
+        if (simRateD) simRateD.textContent = rate.toFixed(2);
+        if (simDearn) simDearn.textContent = dEarn.toFixed(2);
+        if (simTotKm) simTotKm.textContent = totKm.toFixed(1);
+        if (simTotEarn) simTotEarn.textContent = totEarn.toFixed(2);
+    }
+
+    if (rateInput) rateInput.addEventListener('input', updateSim);
+    if (pKmInput) pKmInput.addEventListener('input', updateSim);
+    if (dKmInput) dKmInput.addEventListener('input', updateSim);
+    updateSim();
+})();
+</script>
+{% endblock %}

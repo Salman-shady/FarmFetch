@@ -1,0 +1,204 @@
+{% extends "admin/layout.html" %}
+
+{% block admin_content %}
+<div class="d-flex flex-wrap justify-content-between align-items-center mb-4 gap-3">
+    <div>
+        <h2 class="h3 fw-bold text-dark mb-1">User Directory & Governance</h2>
+        <p class="text-muted small mb-0">Search, filter, inspect profiles, and manage account statuses across all roles.</p>
+    </div>
+    <span class="badge bg-danger-subtle text-danger px-3 py-2 rounded-pill">
+        Access Control & Suspension
+    </span>
+</div>
+
+<!-- Filter Bar -->
+<div class="card border-0 shadow-sm rounded-4 p-3 bg-white mb-4">
+    <form method="GET" action="{{ url_for('admin_users') }}" class="row g-3 align-items-center">
+        <!-- Role Filter -->
+        <div class="col-md-3">
+            <label class="form-label text-muted small mb-1 fw-semibold">Role Filter</label>
+            <select name="role" class="form-select form-select-sm rounded-pill" onchange="this.form.submit()">
+                <option value="ALL" {% if role_filter == 'all' %}selected{% endif %}>All Roles</option>
+                <option value="customer" {% if role_filter == 'customer' %}selected{% endif %}>Customers</option>
+                <option value="farmer" {% if role_filter == 'farmer' %}selected{% endif %}>Farmers</option>
+                <option value="driver" {% if role_filter == 'driver' %}selected{% endif %}>Delivery Drivers</option>
+                <option value="admin" {% if role_filter == 'admin' %}selected{% endif %}>Administrators</option>
+            </select>
+        </div>
+
+        <!-- Status Filter -->
+        <div class="col-md-3">
+            <label class="form-label text-muted small mb-1 fw-semibold">Account Status</label>
+            <select name="status" class="form-select form-select-sm rounded-pill" onchange="this.form.submit()">
+                <option value="ALL" {% if status_filter == 'all' %}selected{% endif %}>All Statuses</option>
+                <option value="active" {% if status_filter == 'active' %}selected{% endif %}>Active Only</option>
+                <option value="suspended" {% if status_filter == 'suspended' %}selected{% endif %}>Suspended Only</option>
+            </select>
+        </div>
+
+        <!-- Search Bar -->
+        <div class="col-md-6">
+            <label class="form-label text-muted small mb-1 fw-semibold">Search Accounts</label>
+            <div class="input-group">
+                <input type="text" name="q" value="{{ search_q }}" class="form-control form-control-sm rounded-start-pill ps-3" placeholder="Search by email or name...">
+                <button class="btn btn-sm btn-success rounded-end-pill px-3" type="submit">
+                    <i class="bi bi-search me-1"></i> Search
+                </button>
+            </div>
+        </div>
+    </form>
+</div>
+
+<!-- Users Table -->
+<div class="card border-0 shadow-sm rounded-4 overflow-hidden bg-white mb-4">
+    {% if pagination.items %}
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="table-light text-muted small text-uppercase">
+                    <tr>
+                        <th class="ps-4">User Account</th>
+                        <th>Role</th>
+                        <th>Status</th>
+                        <th>Order Activity</th>
+                        <th>Security / Suspension Info</th>
+                        <th class="text-end pe-4">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for user in pagination.items %}
+                        <tr>
+                            <td class="ps-4">
+                                <div class="d-flex align-items-center gap-2">
+                                    <div class="farm-avatar" style="width: 36px; height: 36px; font-size: 0.95rem; 
+                                        {% if user.role == 'admin' %}background: #fee2e2; color: #991b1b;
+                                        {% elif user.role == 'farmer' %}background: #d8f3dc; color: #166534;
+                                        {% elif user.role == 'driver' %}background: #fef3c7; color: #b45309;
+                                        {% else %}background: #e0f2fe; color: #0369a1;{% endif %}">
+                                        {% if user.role == 'admin' %}<i class="bi bi-shield-fill"></i>
+                                        {% elif user.role == 'farmer' %}<i class="bi bi-tree"></i>
+                                        {% elif user.role == 'driver' %}<i class="bi bi-truck"></i>
+                                        {% else %}<i class="bi bi-person"></i>{% endif %}
+                                    </div>
+                                    <div>
+                                        <div class="fw-bold text-dark">{{ user.email }}</div>
+                                        <small class="text-muted">User ID #{{ user.id }}</small>
+                                    </div>
+                                </div>
+                            </td>
+                            <td>
+                                {% if user.role == 'admin' %}
+                                    <span class="badge bg-danger text-white rounded-pill px-2 py-1">Administrator</span>
+                                {% elif user.role == 'farmer' %}
+                                    <span class="badge bg-success-subtle text-success rounded-pill px-2 py-1">Farmer</span>
+                                {% elif user.role == 'driver' %}
+                                    <span class="badge bg-warning-subtle text-dark rounded-pill px-2 py-1">Driver</span>
+                                {% else %}
+                                    <span class="badge bg-primary-subtle text-primary rounded-pill px-2 py-1">Customer</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if user.is_suspended %}
+                                    <span class="badge bg-danger text-white rounded-pill px-2 py-1">
+                                        <i class="bi bi-slash-circle me-1"></i>Suspended
+                                    </span>
+                                {% else %}
+                                    <span class="badge bg-success text-white rounded-pill px-2 py-1">
+                                        <i class="bi bi-check-circle me-1"></i>Active
+                                    </span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <span class="fw-semibold text-dark small">{{ user.order_count }} orders</span>
+                                {% if user.role == 'farmer' and user.farm %}
+                                    <small class="d-block text-muted text-truncate" style="max-width: 140px;">
+                                        {{ user.farm.name }}
+                                    </small>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if user.is_suspended %}
+                                    <small class="d-block text-danger fw-semibold" style="font-size: 0.75rem;">
+                                        Reason: "{{ user.suspension_reason or 'Policy violation' }}"
+                                    </small>
+                                    {% if user.suspended_by %}
+                                        <small class="d-block text-muted" style="font-size: 0.72rem;">By: {{ user.suspended_by }}</small>
+                                    {% endif %}
+                                {% else %}
+                                    <small class="text-muted" style="font-size: 0.75rem;">In good standing</small>
+                                {% endif %}
+                            </td>
+                            <td class="text-end pe-4">
+                                {% if user.id == current_user.id %}
+                                    <span class="badge bg-light text-muted border">Current User</span>
+                                {% elif user.is_suspended %}
+                                    <form method="POST" action="{{ url_for('admin_toggle_user_suspend', user_id=user.id) }}" class="d-inline">
+                                        <button type="submit" class="btn btn-sm btn-outline-success rounded-pill px-3">
+                                            <i class="bi bi-arrow-counterclockwise me-1"></i>Reactivate
+                                        </button>
+                                    </form>
+                                {% else %}
+                                    <button type="button" class="btn btn-sm btn-outline-danger rounded-pill px-3" data-bs-toggle="modal" data-bs-target="#suspendModal{{ user.id }}">
+                                        <i class="bi bi-slash-circle me-1"></i>Suspend
+                                    </button>
+
+                                    <!-- Suspension Confirmation Modal -->
+                                    <div class="modal fade" id="suspendModal{{ user.id }}" tabindex="-1" aria-hidden="true">
+                                        <div class="modal-dialog modal-dialog-centered">
+                                            <div class="modal-content rounded-4 border-0 shadow">
+                                                <form method="POST" action="{{ url_for('admin_toggle_user_suspend', user_id=user.id) }}">
+                                                    <div class="modal-header border-0 pb-0">
+                                                        <h5 class="modal-title fw-bold text-danger">
+                                                            <i class="bi bi-exclamation-triangle me-2"></i>Suspend User Account
+                                                        </h5>
+                                                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                                                    </div>
+                                                    <div class="modal-body py-3 text-start">
+                                                        <p class="small text-muted mb-3">
+                                                            Suspending <strong>{{ user.email }}</strong> (Role: {{ user.role }}) will immediately terminate active sessions and prevent further marketplace actions. Existing order history will be preserved.
+                                                        </p>
+                                                        <div class="mb-3">
+                                                            <label class="form-label fw-semibold small">Mandatory Justification Reason</label>
+                                                            <textarea name="reason" class="form-control rounded-3" rows="3" placeholder="Specify terms violation, fraudulent activity, or dispute cause..." required></textarea>
+                                                        </div>
+                                                    </div>
+                                                    <div class="modal-footer border-0 pt-0">
+                                                        <button type="button" class="btn btn-secondary rounded-pill px-3" data-bs-dismiss="modal">Cancel</button>
+                                                        <button type="submit" class="btn btn-danger rounded-pill px-4">Confirm Suspension</button>
+                                                    </div>
+                                                </form>
+                                            </div>
+                                        </div>
+                                    </div>
+                                {% endif %}
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Pagination Controls -->
+        {% if pagination.total_pages > 1 %}
+            <div class="p-3 border-top d-flex justify-content-between align-items-center">
+                <small class="text-muted">
+                    Showing page {{ pagination.page }} of {{ pagination.total_pages }} ({{ pagination.total_count }} total users)
+                </small>
+                <div class="btn-group btn-group-sm">
+                    {% if pagination.has_prev %}
+                        <a href="{{ url_for('admin_users', role=role_filter, status=status_filter, q=search_q, page=pagination.prev_page) }}" class="btn btn-outline-secondary">Previous</a>
+                    {% endif %}
+                    {% if pagination.has_next %}
+                        <a href="{{ url_for('admin_users', role=role_filter, status=status_filter, q=search_q, page=pagination.next_page) }}" class="btn btn-outline-secondary">Next</a>
+                    {% endif %}
+                </div>
+            </div>
+        {% endif %}
+    {% else %}
+        <div class="text-center py-5 text-muted">
+            <i class="bi bi-people fs-1 text-secondary d-block mb-2"></i>
+            <h5 class="fw-bold text-dark">No users found</h5>
+            <p class="small mb-0">No accounts match the selected filters or search terms.</p>
+        </div>
+    {% endif %}
+</div>
+{% endblock %}

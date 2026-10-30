@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+
+{% block title %}Report Issue - Order #{{ order.id }} - FarmFetch{% endblock %}
+
+{% block content %}
+<div class="container py-4" style="max-width: 720px;">
+    <!-- Back link -->
+    <a href="{{ url_for('order_details', order_id=order.id) }}" class="btn btn-outline-secondary btn-sm rounded-pill px-3 mb-3">
+        <i class="bi bi-arrow-left me-1"></i> Back to Order Details
+    </a>
+
+    <div class="card border-0 shadow-sm rounded-4 p-4 p-md-5 bg-white">
+        <div class="text-center mb-4">
+            <span class="badge bg-danger-subtle text-danger p-3 rounded-circle fs-3 mb-2">
+                <i class="bi bi-shield-exclamation"></i>
+            </span>
+            <h1 class="h3 fw-bold text-dark mb-1">Report an Order Issue / File Dispute</h1>
+            <p class="text-muted small mb-0">Our customer support and operations team will review your report directly with the farm and delivery driver.</p>
+        </div>
+
+        <!-- Order Context Box -->
+        <div class="p-3 bg-light rounded-3 mb-4 border">
+            <div class="row g-2 small">
+                <div class="col-sm-6">
+                    <span class="text-muted">Order ID:</span>
+                    <span class="fw-bold text-dark">#{{ order.id }}</span>
+                </div>
+                <div class="col-sm-6">
+                    <span class="text-muted">Origin Farm:</span>
+                    <span class="fw-semibold text-dark">{{ order.farm.name if order.farm else 'Farm #' ~ order.farm_id }}</span>
+                </div>
+                <div class="col-sm-6">
+                    <span class="text-muted">Order Status:</span>
+                    <span class="badge bg-secondary-subtle text-dark">{{ order.status }}</span>
+                </div>
+                <div class="col-sm-6">
+                    <span class="text-muted">Order Total:</span>
+                    <span class="fw-bold text-success">₹{{ "%.2f"|format(order.total_price or 0) }}</span>
+                </div>
+            </div>
+        </div>
+
+        <form method="POST" action="{{ url_for('submit_order_complaint', order_id=order.id) }}">
+            <div class="mb-3">
+                <label for="category" class="form-label fw-semibold small text-dark">Select Issue Category *</label>
+                <select name="category" id="category" class="form-select rounded-3 py-2" required>
+                    <option value="" disabled selected>Choose a category...</option>
+                    {% for cat in categories %}
+                        <option value="{{ cat }}">{{ cat }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="mb-3">
+                <label for="description" class="form-label fw-semibold small text-dark">Describe the Issue in Detail *</label>
+                <textarea name="description" id="description" class="form-control rounded-3" rows="5" placeholder="Please specify which items were affected, quantities, condition upon arrival, or delivery conduct..." required></textarea>
+                <small class="text-muted" style="font-size: 0.72rem;">Please be specific. Photos or documentation can be referenced in your description.</small>
+            </div>
+
+            <div class="alert alert-warning-subtle border border-warning-subtle rounded-3 small p-3 mb-4">
+                <i class="bi bi-info-circle-fill text-warning me-1"></i>
+                <strong>Dispute Policy:</strong> Submitting a dispute initiates a formal investigation. Resolutions, replacements, or account credits are processed after administrator review with the participating farm or driver.
+            </div>
+
+            <button type="submit" class="btn btn-danger btn-lg w-100 rounded-pill py-3 fw-bold shadow-sm">
+                <i class="bi bi-send me-2"></i> Submit Issue for Review
+            </button>
+        </form>
+    </div>
+</div>
+{% endblock %}

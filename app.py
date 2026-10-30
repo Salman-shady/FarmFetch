@@ -257,7 +257,19 @@ class BaseModel(metaclass=ModelMeta):
             'delivered_at', 'cancelled_at', 'failed_at', 'cancellation_reason', 'failure_reason',
             'driver_latitude', 'driver_longitude', 'last_location_at',
             'last_latitude', 'last_longitude', 'last_location_update', 'last_active_at',
-            'availability', 'phone', 'name'
+            'availability', 'phone', 'name',
+            'is_suspended', 'suspension_reason', 'suspended_at', 'suspended_by',
+            'verification_status', 'verification_notes', 'verified_at', 'verified_by',
+            'license_number', 'supporting_document',
+            'driver_verification_status', 'driver_verification_notes', 'driver_verified_at', 'driver_verified_by',
+            'driver_license_number', 'driver_vehicle_type', 'vehicle_type',
+            'rating', 'comment', 'is_reported', 'report_reason', 'is_hidden', 'moderated_at', 'moderated_by',
+            'admin_notes', 'resolved_at', 'resolved_by', 'action', 'target_type', 'target_id', 'details', 'actor_email',
+            'actor_role', 'actor_id', 'ip_address', 'timestamp', 'timestamp_display', 'timestamp_iso',
+            'driver_payout_finalized', 'driver_payout_finalized_at', 'driver_payout_amount', 'driver_payout_rate',
+            'driver_pickup_distance_km', 'driver_pickup_earning', 'driver_pickup_source',
+            'driver_drop_distance_km', 'driver_drop_earning', 'driver_drop_source',
+            'driver_payable_distance_km', 'total_earnings', 'last_payout_at'
         ):
             return None
         raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
@@ -330,18 +342,76 @@ class DB:
         """Initializes collections and indexes in MongoDB."""
         try:
             mongo_db['users'].create_index('email', unique=True)
+            mongo_db['users'].create_index('role')
+            mongo_db['users'].create_index('is_suspended')
+            mongo_db['users'].create_index('driver_verification_status')
+
             mongo_db['farms'].create_index('user_id', unique=True)
+            mongo_db['farms'].create_index('verification_status')
+
             mongo_db['produce_items'].create_index('farm_id')
+
             mongo_db['orders'].create_index('farm_id')
             mongo_db['orders'].create_index('customer_id')
             mongo_db['orders'].create_index('driver_id')
+            mongo_db['orders'].create_index('status')
+            mongo_db['orders'].create_index('created_at')
+
             mongo_db['order_items'].create_index('order_id')
+
+            mongo_db['reviews'].create_index([('order_id', 1), ('target_type', 1)], unique=True)
+            mongo_db['reviews'].create_index('target_id')
+            mongo_db['reviews'].create_index('customer_id')
+            mongo_db['reviews'].create_index('is_reported')
+            mongo_db['reviews'].create_index('is_hidden')
+
+            mongo_db['complaints'].create_index('order_id')
+            mongo_db['complaints'].create_index('customer_id')
+            mongo_db['complaints'].create_index('status')
+
+            mongo_db['audit_logs'].create_index([('timestamp', pymongo.DESCENDING)])
+            mongo_db['audit_logs'].create_index('action')
+            mongo_db['audit_logs'].create_index('actor_id')
+            mongo_db['audit_logs'].create_index('target_type')
         except Exception as e:
             print("MongoDB index initialization:", e)
 
 db = DB()
 
 # --- Database Models ---
+
+class VerificationStatus:
+    PENDING = 'PENDING'
+    APPROVED = 'APPROVED'
+    REJECTED = 'REJECTED'
+    NEEDS_MORE_INFORMATION = 'NEEDS_MORE_INFORMATION'
+
+class ComplaintStatus:
+    OPEN = 'OPEN'
+    UNDER_REVIEW = 'UNDER_REVIEW'
+    RESOLVED = 'RESOLVED'
+    REJECTED = 'REJECTED'
+
+class ComplaintCategory:
+    MISSING_PRODUCE = 'Missing Produce'
+    DAMAGED_PRODUCE = 'Damaged Produce'
+    INCORRECT_QUANTITY = 'Incorrect Quantity'
+    LATE_DELIVERY = 'Late Delivery'
+    PAYMENT_REFUND = 'Payment / Refund Problem'
+    CONDUCT_ISSUE = 'Driver / Farmer Conduct'
+    OTHER = 'Other'
+
+    @classmethod
+    def all_categories(cls):
+        return [
+            cls.MISSING_PRODUCE,
+            cls.DAMAGED_PRODUCE,
+            cls.INCORRECT_QUANTITY,
+            cls.LATE_DELIVERY,
+            cls.PAYMENT_REFUND,
+            cls.CONDUCT_ISSUE,
+            cls.OTHER
+        ]
 
 class DriverAvailability:
     AVAILABLE = 'AVAILABLE'
@@ -363,6 +433,24 @@ class User(BaseModel, UserMixin):
         if not stored_hash:
             return False
         return bcrypt.check_password_hash(stored_hash, password)
+
+    @property
+    def is_active(self):
+        """Flask-Login active flag: returns False if account is suspended."""
+        return not bool(self._data.get('is_suspended', False))
+
+    @property
+    def is_suspended(self):
+        return bool(self._data.get('is_suspended', False))
+
+    @property
+    def driver_verification_status(self):
+        if 'driver_verification_status' in self._data and self._data['driver_verification_status']:
+            return self._data['driver_verification_status']
+        if self.role == 'driver':
+            # For backward compatibility with existing test suites where status was unset
+            return VerificationStatus.APPROVED
+        return None
 
     @property
     def farm(self):
@@ -415,6 +503,10 @@ class Farm(BaseModel):
     farm_type = ColumnField('farm_type')
 
     @property
+    def verification_status(self):
+        return self._data.get('verification_status', VerificationStatus.APPROVED)
+
+    @property
     def user(self):
         return User.query.get(self.user_id)
 
@@ -434,7 +526,71 @@ class Farm(BaseModel):
             'farm_type': getattr(self, 'farm_type', ''),
             'latitude': getattr(self, 'latitude', None),
             'longitude': getattr(self, 'longitude', None),
+            'verification_status': self.verification_status
         }
+
+
+class Review(BaseModel):
+    __collection__ = 'reviews'
+
+    order_id = ColumnField('order_id')
+    customer_id = ColumnField('customer_id')
+    target_type = ColumnField('target_type')  # 'farm' or 'driver'
+    target_id = ColumnField('target_id')
+    rating = ColumnField('rating')  # 1 to 5 int
+    comment = ColumnField('comment')
+    created_at = ColumnField('created_at')
+
+    @property
+    def order(self):
+        return Order.query.get(self.order_id)
+
+    @property
+    def customer(self):
+        return User.query.get(self.customer_id)
+
+    @property
+    def target_name(self):
+        if self.target_type == 'farm':
+            f = Farm.query.get(self.target_id)
+            return f.name if f else f"Farm #{self.target_id}"
+        elif self.target_type == 'driver':
+            d = User.query.get(self.target_id)
+            return d.email.split('@')[0].title() if d else f"Driver #{self.target_id}"
+        return f"Target #{self.target_id}"
+
+
+class Complaint(BaseModel):
+    __collection__ = 'complaints'
+
+    order_id = ColumnField('order_id')
+    customer_id = ColumnField('customer_id')
+    category = ColumnField('category')
+    description = ColumnField('description')
+    status = ColumnField('status')
+    admin_notes = ColumnField('admin_notes')
+    created_at = ColumnField('created_at')
+
+    @property
+    def order(self):
+        return Order.query.get(self.order_id)
+
+    @property
+    def customer(self):
+        return User.query.get(self.customer_id)
+
+
+class AuditLog(BaseModel):
+    __collection__ = 'audit_logs'
+
+    actor_id = ColumnField('actor_id')
+    actor_email = ColumnField('actor_email')
+    actor_role = ColumnField('actor_role')
+    action = ColumnField('action')
+    target_type = ColumnField('target_type')
+    target_id = ColumnField('target_id')
+    details = ColumnField('details')
+    timestamp = ColumnField('timestamp')
 
 
 class ProduceItem(BaseModel):
@@ -667,6 +823,12 @@ def transition_order_status(order, new_status, actor_user=None, notes=None, **ex
     order._data.update(res)
     order.status = target_norm
 
+    # Calculate and finalize driver earnings on server strictly upon successful delivery
+    if target_norm == OrderStatus.DELIVERED:
+        payout_doc = finalize_driver_order_payout(order, actor_user)
+        if payout_doc:
+            order._data.update(payout_doc)
+
     emit_order_status_update(order, target_norm, actor_user)
 
     # Synchronize driver availability when order lifecycle changes
@@ -806,6 +968,13 @@ def get_recommended_drivers_for_order(order):
         driver_name = d.get('name') or driver_email.split('@')[0].capitalize()
         driver_phone = d.get('phone', 'N/A')
         
+        # Check driver verification and suspension status
+        v_status = d.get('driver_verification_status')
+        if v_status in [VerificationStatus.PENDING, VerificationStatus.REJECTED, VerificationStatus.NEEDS_MORE_INFORMATION]:
+            continue
+        if d.get('is_suspended', False):
+            continue
+
         # Check active deliveries
         active_count = mongo_db['orders'].count_documents({
             'driver_id': driver_id,
@@ -886,6 +1055,259 @@ def get_recommended_drivers_for_order(order):
     return ranked_drivers
 
 
+# --- Driver Earnings Engine (₹3/km default, admin-configurable, atomic idempotent payout) ---
+
+DEFAULT_DRIVER_RATE_PER_KM = 3.0
+
+def get_driver_rate_per_km():
+    """
+    Retrieves the configurable platform driver earning rate per kilometer.
+    Defaults to ₹3.00/km as per platform earning rules.
+    """
+    try:
+        doc = mongo_db['platform_settings'].find_one({'_id': 'driver_rate_per_km'})
+        if doc and 'rate' in doc:
+            return float(doc['rate'])
+    except Exception as e:
+        print("Error fetching driver earning rate per km:", e)
+    return DEFAULT_DRIVER_RATE_PER_KM
+
+def set_driver_rate_per_km(rate, admin_user=None):
+    """
+    Allows admin to configure the driver earning rate per km.
+    Records an immutable audit trail entry for rate updates.
+    """
+    rate = round(float(rate), 2)
+    if rate <= 0:
+        raise ValueError("Driver earning rate must be strictly positive.")
+
+    now = datetime.datetime.now()
+    mongo_db['platform_settings'].update_one(
+        {'_id': 'driver_rate_per_km'},
+        {
+            '$set': {
+                'rate': rate,
+                'currency': 'INR',
+                'currency_symbol': '₹',
+                'updated_at': now,
+                'updated_by': admin_user.email if admin_user else 'system'
+            }
+        },
+        upsert=True
+    )
+
+    actor_id = admin_user.id if admin_user else None
+    actor_email = admin_user.email if admin_user else 'system'
+    actor_role = getattr(admin_user, 'role', 'admin') if admin_user else 'admin'
+
+    mongo_db['audit_logs'].insert_one({
+        '_id': get_next_id('audit_logs'),
+        'actor_id': actor_id,
+        'actor_email': actor_email,
+        'actor_role': actor_role,
+        'action': 'DRIVER_RATE_UPDATED',
+        'target_type': 'platform_settings',
+        'target_id': 'driver_rate_per_km',
+        'details': f"Admin updated driver earning rate to ₹{rate:.2f} per km",
+        'timestamp': now
+    })
+    return rate
+
+def calculate_order_driver_earnings(order, driver_user=None, rate_per_km=None):
+    """
+    Calculates driver earnings according to the Driver Earnings Rule:
+      - Pickup earning = pickup road distance in km × ₹rate
+      - Drop earning = farm-to-customer road distance in km × ₹rate
+      - Total driver earning = pickup earning + drop earning
+    Uses road-distance estimates from OSRM where available, with explicit estimate labeling.
+    If the order has already finalized earnings, returns frozen finalized payout data.
+    """
+    # 1. If already finalized on server, return immutable finalized records
+    is_finalized = bool(getattr(order, 'driver_payout_finalized', False) or (isinstance(order, dict) and order.get('driver_payout_finalized')))
+    if is_finalized:
+        p_km = float(getattr(order, 'driver_pickup_distance_km', 0.0) or (order.get('driver_pickup_distance_km', 0.0) if isinstance(order, dict) else 0.0))
+        d_km = float(getattr(order, 'driver_drop_distance_km', 0.0) or (order.get('driver_drop_distance_km', 0.0) if isinstance(order, dict) else 0.0))
+        p_earn = float(getattr(order, 'driver_pickup_earning', 0.0) or (order.get('driver_pickup_earning', 0.0) if isinstance(order, dict) else 0.0))
+        d_earn = float(getattr(order, 'driver_drop_earning', 0.0) or (order.get('driver_drop_earning', 0.0) if isinstance(order, dict) else 0.0))
+        tot_earn = float(getattr(order, 'driver_payout_amount', 0.0) or (order.get('driver_payout_amount', 0.0) if isinstance(order, dict) else 0.0))
+        tot_km = float(getattr(order, 'driver_payable_distance_km', 0.0) or (order.get('driver_payable_distance_km', 0.0) if isinstance(order, dict) else 0.0))
+        frozen_rate = float(getattr(order, 'driver_payout_rate', 0.0) or (order.get('driver_payout_rate', 0.0) if isinstance(order, dict) else 0.0)) or get_driver_rate_per_km()
+        p_src = getattr(order, 'driver_pickup_source', 'osrm') if not isinstance(order, dict) else order.get('driver_pickup_source', 'osrm')
+        d_src = getattr(order, 'driver_drop_source', 'osrm') if not isinstance(order, dict) else order.get('driver_drop_source', 'osrm')
+        
+        return {
+            'rate_per_km': round(frozen_rate, 2),
+            'currency_symbol': '₹',
+            'pickup_distance_km': round(p_km, 2),
+            'pickup_earning': round(p_earn, 2),
+            'pickup_source': p_src,
+            'pickup_source_label': 'Road Route (OSRM)' if p_src == 'osrm' else 'Estimated Distance',
+            'is_pickup_road': (p_src == 'osrm'),
+            'drop_distance_km': round(d_km, 2),
+            'drop_earning': round(d_earn, 2),
+            'drop_source': d_src,
+            'drop_source_label': 'Road Route (OSRM)' if d_src == 'osrm' else 'Estimated Distance',
+            'is_drop_road': (d_src == 'osrm'),
+            'total_distance_km': round(tot_km, 2),
+            'total_earning': round(tot_earn, 2),
+            'is_finalized': True
+        }
+
+    # 2. Compute live/estimated earnings
+    active_rate = round(float(rate_per_km if rate_per_km is not None else get_driver_rate_per_km()), 2)
+    
+    # Extract coordinates
+    farm = getattr(order, 'farm', None)
+    if not farm and hasattr(order, 'farm_id'):
+        farm = Farm.query.get(order.farm_id)
+    farm_lat = getattr(farm, 'latitude', None) if farm else None
+    farm_lng = getattr(farm, 'longitude', None) if farm else None
+
+    cust_lat = getattr(order, 'customer_latitude', None)
+    cust_lng = getattr(order, 'customer_longitude', None)
+
+    drv_lat = getattr(order, 'driver_latitude', None)
+    drv_lng = getattr(order, 'driver_longitude', None)
+    if drv_lat is None or drv_lng is None:
+        if driver_user:
+            drv_lat = getattr(driver_user, 'last_latitude', None)
+            drv_lng = getattr(driver_user, 'last_longitude', None)
+        elif getattr(order, 'driver_id', None):
+            d_user = User.query.get(order.driver_id)
+            if d_user:
+                drv_lat = getattr(d_user, 'last_latitude', None)
+                drv_lng = getattr(d_user, 'last_longitude', None)
+
+    # Leg 1: Pickup Journey (Driver to Farm)
+    if drv_lat is not None and drv_lng is not None and farm_lat is not None and farm_lng is not None:
+        pickup_route = get_road_route(drv_lat, drv_lng, farm_lat, farm_lng)
+        pickup_km = round(float(pickup_route.get('distance_km', 0.0)), 2)
+        is_pickup_road = pickup_route.get('is_road_route', False)
+        pickup_source = pickup_route.get('source', 'osrm' if is_pickup_road else 'estimate')
+        pickup_label = 'Road Route (OSRM)' if is_pickup_road else 'Estimated Distance (Haversine)'
+    else:
+        # Standard estimate when driver GPS is not yet acquired
+        pickup_km = 3.0
+        is_pickup_road = False
+        pickup_source = 'standard_estimate'
+        pickup_label = 'Estimated Distance (GPS Pending)'
+
+    # Leg 2: Drop Journey (Farm to Customer)
+    if farm_lat is not None and farm_lng is not None and cust_lat is not None and cust_lng is not None:
+        drop_route = get_road_route(farm_lat, farm_lng, cust_lat, cust_lng)
+        drop_km = round(float(drop_route.get('distance_km', 0.0)), 2)
+        is_drop_road = drop_route.get('is_road_route', False)
+        drop_source = drop_route.get('source', 'osrm' if is_drop_road else 'estimate')
+        drop_label = 'Road Route (OSRM)' if is_drop_road else 'Estimated Distance (Haversine)'
+    else:
+        drop_km = 5.0
+        is_drop_road = False
+        drop_source = 'standard_estimate'
+        drop_label = 'Estimated Distance (Standard Estimate)'
+
+    pickup_earning = round(pickup_km * active_rate, 2)
+    drop_earning = round(drop_km * active_rate, 2)
+    total_distance_km = round(pickup_km + drop_km, 2)
+    total_earning = round(pickup_earning + drop_earning, 2)
+
+    return {
+        'rate_per_km': active_rate,
+        'currency_symbol': '₹',
+        'pickup_distance_km': pickup_km,
+        'pickup_earning': pickup_earning,
+        'pickup_source': pickup_source,
+        'pickup_source_label': pickup_label,
+        'is_pickup_road': is_pickup_road,
+        'drop_distance_km': drop_km,
+        'drop_earning': drop_earning,
+        'drop_source': drop_source,
+        'drop_source_label': drop_label,
+        'is_drop_road': is_drop_road,
+        'total_distance_km': total_distance_km,
+        'total_earning': total_earning,
+        'is_finalized': False
+    }
+
+def finalize_driver_order_payout(order, actor_user=None):
+    """
+    Calculates and finalizes driver earnings on server upon successful delivery.
+    Enforces atomic idempotency via MongoDB find_one_and_update so duplicate payouts are impossible.
+    Formula:
+      Pickup earning = pickup road distance in km × ₹rate
+      Drop earning = farm-to-customer road distance in km × ₹rate
+      Total driver earning = pickup earning + drop earning
+    """
+    order_id = order.id if hasattr(order, 'id') else order.get('_id')
+    driver_id = getattr(order, 'driver_id', None) or (order.get('driver_id') if isinstance(order, dict) else None)
+    if not driver_id:
+        return None
+
+    rate = get_driver_rate_per_km()
+    earnings = calculate_order_driver_earnings(order, rate_per_km=rate)
+
+    now = datetime.datetime.now()
+    payout_data = {
+        'driver_payout_finalized': True,
+        'driver_payout_finalized_at': now,
+        'driver_payout_amount': earnings['total_earning'],
+        'driver_payout_rate': rate,
+        'driver_pickup_distance_km': earnings['pickup_distance_km'],
+        'driver_pickup_earning': earnings['pickup_earning'],
+        'driver_pickup_source': earnings['pickup_source'],
+        'driver_drop_distance_km': earnings['drop_distance_km'],
+        'driver_drop_earning': earnings['drop_earning'],
+        'driver_drop_source': earnings['drop_source'],
+        'driver_payable_distance_km': earnings['total_distance_km']
+    }
+
+    # Atomic conditional update prevents duplicate payout even across parallel requests
+    updated_doc = mongo_db['orders'].find_one_and_update(
+        {
+            '_id': order_id,
+            'driver_payout_finalized': {'$ne': True}
+        },
+        {'$set': payout_data},
+        return_document=pymongo.ReturnDocument.AFTER
+    )
+
+    if updated_doc:
+        # Increment driver's balance and credit account
+        mongo_db['users'].update_one(
+            {'_id': driver_id},
+            {
+                '$inc': {'total_earnings': earnings['total_earning']},
+                '$set': {'last_payout_at': now}
+            }
+        )
+
+        actor_id = actor_user.id if actor_user else None
+        actor_email = actor_user.email if actor_user else 'system'
+        actor_role = getattr(actor_user, 'role', 'system') if actor_user else 'system'
+
+        mongo_db['audit_logs'].insert_one({
+            '_id': get_next_id('audit_logs'),
+            'actor_id': actor_id,
+            'actor_email': actor_email,
+            'actor_role': actor_role,
+            'action': 'DRIVER_PAYOUT_FINALIZED',
+            'target_type': 'order',
+            'target_id': order_id,
+            'details': (
+                f"Driver #{driver_id} payout finalized: ₹{earnings['total_earning']:.2f} "
+                f"(Pickup: {earnings['pickup_distance_km']} km × ₹{rate:.2f} = ₹{earnings['pickup_earning']:.2f}, "
+                f"Drop: {earnings['drop_distance_km']} km × ₹{rate:.2f} = ₹{earnings['drop_earning']:.2f}). "
+                f"Total payable: {earnings['total_distance_km']} km."
+            ),
+            'timestamp': now
+        })
+
+        if hasattr(order, '_data'):
+            order._data.update(updated_doc)
+        return updated_doc
+
+    return None
+
+
 class Order(BaseModel):
     __collection__ = 'orders'
 
@@ -911,6 +1333,11 @@ class Order(BaseModel):
                 'notes': 'Order placed by customer'
             }]
         super().__init__(**kwargs)
+
+    @property
+    def driver_earnings(self):
+        """Returns calculated or finalized driver earnings breakdown."""
+        return calculate_order_driver_earnings(self)
 
     @property
     def customer(self):
@@ -1153,6 +1580,153 @@ def driver_required(f):
         return f(*args, **kwargs)
     return decorated_function
 
+def admin_required(f):
+    """Decorator to ensure user is logged in, active, and has administrator privileges."""
+    @wraps(f)
+    @login_required
+    def decorated_function(*args, **kwargs):
+        if not current_user.is_authenticated or current_user.role != 'admin':
+            if request.is_json or request.path.startswith('/api/'):
+                return jsonify({'error': 'Unauthorized. Administrator access required.'}), 403
+            flash('Access denied. Administrator privileges required.', 'danger')
+            return redirect(url_for('home'))
+        if getattr(current_user, 'is_suspended', False):
+            logout_user()
+            flash('Your administrator account has been suspended. Please contact support.', 'danger')
+            return redirect(url_for('login'))
+        return f(*args, **kwargs)
+    return decorated_function
+
+@app.before_request
+def check_user_suspension():
+    """Immediately logs out and blocks any suspended user from performing actions."""
+    if current_user.is_authenticated:
+        if getattr(current_user, 'is_suspended', False):
+            reason = getattr(current_user, 'suspension_reason', None) or 'Violation of platform terms'
+            logout_user()
+            flash(f'Your account has been suspended by administration ({reason}).', 'danger')
+            return redirect(url_for('login'))
+
+def log_audit(actor_id, actor_email, actor_role, action, target_type, target_id, details=None, ip_address=None):
+    """
+    Records a sensitive administrative action into the audit trail.
+    Ensures safe logging without leaking passwords, OTPs, or auth secrets.
+    """
+    safe_details = {}
+    if details and isinstance(details, dict):
+        for k, v in details.items():
+            if any(secret in k.lower() for secret in ['password', 'hash', 'otp', 'secret', 'token', 'key']):
+                safe_details[k] = '[REDACTED]'
+            else:
+                safe_details[k] = str(v)
+    elif details:
+        safe_details = {'message': str(details)}
+
+    now = datetime.datetime.now()
+    log_entry = {
+        'id': get_next_id('audit_logs'),
+        'actor_id': actor_id,
+        'actor_email': actor_email,
+        'actor_role': actor_role,
+        'action': action,
+        'target_type': target_type,
+        'target_id': target_id,
+        'details': safe_details,
+        'timestamp': now,
+        'timestamp_iso': now.isoformat(),
+        'timestamp_display': now.strftime('%b %d, %Y %I:%M %p'),
+        'ip_address': ip_address or (request.remote_addr if request else '127.0.0.1')
+    }
+    mongo_db['audit_logs'].insert_one(log_entry)
+
+def get_farm_rating_stats(farm_id):
+    """Calculates average rating and review count for a farm from active, unhidden reviews."""
+    try:
+        fid = int(farm_id)
+    except (TypeError, ValueError):
+        fid = farm_id
+    pipeline = [
+        {
+            '$match': {
+                'target_type': 'farm',
+                'target_id': fid,
+                'is_hidden': {'$ne': True}
+            }
+        },
+        {
+            '$group': {
+                '_id': None,
+                'avg_rating': {'$avg': '$rating'},
+                'total_reviews': {'$sum': 1}
+            }
+        }
+    ]
+    res = list(mongo_db['reviews'].aggregate(pipeline))
+    if res and res[0].get('avg_rating') is not None:
+        return round(float(res[0]['avg_rating']), 1), int(res[0]['total_reviews'])
+    return 0.0, 0
+
+def get_driver_rating_stats(driver_id):
+    """Calculates average rating and review count for a driver from active, unhidden reviews."""
+    try:
+        did = int(driver_id)
+    except (TypeError, ValueError):
+        did = driver_id
+    pipeline = [
+        {
+            '$match': {
+                'target_type': 'driver',
+                'target_id': did,
+                'is_hidden': {'$ne': True}
+            }
+        },
+        {
+            '$group': {
+                '_id': None,
+                'avg_rating': {'$avg': '$rating'},
+                'total_reviews': {'$sum': 1}
+            }
+        }
+    ]
+    res = list(mongo_db['reviews'].aggregate(pipeline))
+    if res and res[0].get('avg_rating') is not None:
+        return round(float(res[0]['avg_rating']), 1), int(res[0]['total_reviews'])
+    return 0.0, 0
+
+class Pagination:
+    def __init__(self, items, page, per_page, total_count):
+        self.items = items
+        self.page = page
+        self.per_page = per_page
+        self.total_count = total_count
+        self.total_pages = math.ceil(total_count / per_page) if total_count > 0 else 1
+        self.has_prev = page > 1
+        self.has_next = page < self.total_pages
+        self.prev_page = page - 1
+        self.next_page = page + 1
+
+    def __getitem__(self, key):
+        return getattr(self, key)
+
+    def __setitem__(self, key, value):
+        setattr(self, key, value)
+
+    def get(self, key, default=None):
+        return getattr(self, key, default)
+
+def paginate_items(items_list, page=1, per_page=10):
+    page = max(1, int(page or 1))
+    per_page = max(1, min(int(per_page or 10), 100))
+    total_count = len(items_list)
+    start = (page - 1) * per_page
+    end = start + per_page
+    return Pagination(
+        items=items_list[start:end],
+        page=page,
+        per_page=per_page,
+        total_count=total_count
+    )
+
 # --- Helper Functions ---
 def get_cart_details():
     """
@@ -1221,16 +1795,49 @@ def customer_dashboard():
 @app.route('/api/driver/stats')
 @login_required
 def api_driver_stats():
-    """Returns JSON stats for the driver dashboard."""
+    """Returns JSON stats and delivery payout history for the driver dashboard."""
     if current_user.role != 'driver':
         return jsonify({'error': 'Forbidden'}), 403
     
+    rate = get_driver_rate_per_km()
     all_driver_orders = Order.query.filter_by(driver_id=current_user.id).all()
     completed = [o for o in all_driver_orders if o.status in ['Delivered', 'DELIVERED']]
     
+    total_earnings = 0.0
+    completed_list = []
+    for o in completed:
+        earnings = calculate_order_driver_earnings(o, driver_user=current_user, rate_per_km=rate)
+        total_earnings += earnings['total_earning']
+        del_at = getattr(o, 'delivered_at', None)
+        del_str = del_at.strftime('%b %d, %I:%M %p') if (del_at and hasattr(del_at, 'strftime')) else 'Delivered'
+        
+        completed_list.append({
+            'order_id': o.id,
+            'delivered_at': del_str,
+            'customer_name': getattr(o, 'customer_name', 'Customer'),
+            'farm_name': o.farm.name if o.farm else 'Farm',
+            'pickup_distance_km': earnings['pickup_distance_km'],
+            'pickup_earning': earnings['pickup_earning'],
+            'pickup_source_label': earnings['pickup_source_label'],
+            'drop_distance_km': earnings['drop_distance_km'],
+            'drop_earning': earnings['drop_earning'],
+            'drop_source_label': earnings['drop_source_label'],
+            'total_distance_km': earnings['total_distance_km'],
+            'total_earning': earnings['total_earning'],
+            'rate_per_km': earnings['rate_per_km'],
+            'currency_symbol': '₹',
+            'is_finalized': earnings['is_finalized']
+        })
+    
+    user_earnings = float(getattr(current_user, 'total_earnings', 0.0) or 0.0)
+    final_earnings = round(max(total_earnings, user_earnings), 2)
+    
     return jsonify({
         'total_delivered': len(completed),
-        'total_earnings': round(sum((o.total_price or 0) * 0.1 for o in completed), 2)
+        'total_earnings': final_earnings,
+        'rate_per_km': rate,
+        'currency_symbol': '₹',
+        'completed_orders': completed_list
     })
 
 @app.route('/api/farmer/sales-chart')
@@ -1383,22 +1990,43 @@ def api_geocode():
 
 # --- Authentication Routes ---
 
+ALLOWED_REGISTRATION_ROLES = ['customer', 'farmer', 'driver']
+
 @app.route('/register', methods=['GET', 'POST'])
 def register():
     if current_user.is_authenticated:
         return redirect(url_for('home'))
     
     if request.method == 'POST':
-        email = request.form.get('email')
+        email = (request.form.get('email') or '').strip().lower()
         password = request.form.get('password')
-        role = request.form.get('role') # 'customer', 'farmer', or 'driver'
+        role = (request.form.get('role') or '').strip().lower()
+
+        # Strict security validation: Never allow public registration of admin accounts
+        if role not in ALLOWED_REGISTRATION_ROLES:
+            flash(f"Invalid account role '{role}'. Permitted roles are: customer, farmer, driver.", 'danger')
+            return render_template('register.html')
+
+        if not email or not password:
+            flash('Email and password are required.', 'danger')
+            return render_template('register.html')
 
         existing_user = User.query.filter_by(email=email).first()
         if existing_user:
             flash('Email already registered. Please login.', 'warning')
             return redirect(url_for('login'))
         
-        user = User(email=email, role=role)
+        user_data = {
+            'email': email,
+            'role': role,
+            'is_suspended': False,
+            'created_at': datetime.datetime.now()
+        }
+        if role == 'driver':
+            user_data['driver_verification_status'] = VerificationStatus.PENDING
+            user_data['availability'] = DriverAvailability.OFFLINE
+
+        user = User(**user_data)
         user.set_password(password)
         db.session.add(user)
         db.session.commit()
@@ -1411,18 +2039,34 @@ def register():
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if current_user.is_authenticated:
-        return redirect(url_for('home'))
+        if current_user.role == 'admin':
+            return redirect(url_for('admin_dashboard'))
+        elif current_user.role == 'farmer':
+            return redirect(url_for('farmer_dashboard'))
+        elif current_user.role == 'driver':
+            return redirect(url_for('driver_dashboard'))
+        else:
+            return redirect(url_for('customer_dashboard'))
         
     if request.method == 'POST':
-        email = request.form.get('email')
+        email = (request.form.get('email') or '').strip().lower()
         password = request.form.get('password')
         user = User.query.filter_by(email=email).first()
         
         if user and user.check_password(password):
+            # Check for administrative suspension
+            if getattr(user, 'is_suspended', False):
+                reason = getattr(user, 'suspension_reason', None) or 'Violation of platform terms.'
+                flash(f'Account Suspended: Your account has been suspended by administration ({reason}). Please contact support.', 'danger')
+                return render_template('login.html')
+
             login_user(user, remember=True)
             flash(f'Logged in successfully as {user.email}!', 'success')
             
-            if user.role == 'farmer':
+            if user.role == 'admin':
+                log_audit(user.id, user.email, user.role, 'ADMIN_LOGIN', 'system', 0, {'message': 'Administrator logged in'})
+                return redirect(url_for('admin_dashboard'))
+            elif user.role == 'farmer':
                 return redirect(url_for('farmer_dashboard'))
             elif user.role == 'driver':
                 return redirect(url_for('driver_dashboard'))
@@ -1437,9 +2081,10 @@ def login():
 def quick_login(role):
     """
     1-Click instant login for development & testing.
-    Switches/logs in to farmer@farm.com, customer@farm.com, or driver@farm.com without typing.
+    Switches/logs in to admin@farm.com, farmer@farm.com, customer@farm.com, or driver@farm.com without typing.
     """
     role_email_map = {
+        'admin': 'admin@farm.com',
         'farmer': 'farmer@farm.com',
         'customer': 'customer@farm.com',
         'driver': 'driver@farm.com'
@@ -1451,17 +2096,32 @@ def quick_login(role):
         
     user = User.query.filter_by(email=target_email).first()
     if not user:
-        user = User(email=target_email, role=role.lower())
+        user_data = {
+            'email': target_email,
+            'role': role.lower(),
+            'is_suspended': False,
+            'created_at': datetime.datetime.now()
+        }
+        if role.lower() == 'driver':
+            user_data['driver_verification_status'] = VerificationStatus.APPROVED
+            user_data['availability'] = DriverAvailability.AVAILABLE
+        user = User(**user_data)
         user.set_password('password123')
         db.session.add(user)
         db.session.commit()
         
+    if getattr(user, 'is_suspended', False):
+        flash('This account is suspended.', 'danger')
+        return redirect(url_for('login'))
+
     if current_user.is_authenticated:
         logout_user()
     login_user(user, remember=True)
     flash(f'Logged in as {role.title()} ({user.email})', 'success')
     
-    if user.role == 'farmer':
+    if user.role == 'admin':
+        return redirect(url_for('admin_dashboard'))
+    elif user.role == 'farmer':
         return redirect(url_for('farmer_dashboard'))
     elif user.role == 'driver':
         return redirect(url_for('driver_dashboard'))
@@ -1574,6 +2234,7 @@ def create_farm_profile():
         farm_type = request.form.get('farm_type')
         latitude = safe_float(request.form.get('latitude'))
         longitude = safe_float(request.form.get('longitude'))
+        license_number = request.form.get('license_number', '').strip()
         
         new_farm = Farm(
             name=name,
@@ -1581,12 +2242,15 @@ def create_farm_profile():
             farm_type=farm_type,
             user_id=current_user.id, 
             latitude=latitude, 
-            longitude=longitude
+            longitude=longitude,
+            license_number=license_number,
+            verification_status=VerificationStatus.PENDING
         )
         db.session.add(new_farm)
         db.session.commit()
+        log_audit(current_user.id, current_user.email, 'farmer', 'FARM_CREATED', 'farm', new_farm.id, {'name': name})
         
-        flash('Farm profile created successfully!', 'success')
+        flash('Farm profile created and submitted for verification! An administrator will review your farm details.', 'success')
         return redirect(url_for('farmer_dashboard'))
         
     return render_template('create_farm_profile.html')
@@ -1594,7 +2258,7 @@ def create_farm_profile():
 @app.route('/farmer/profile/edit', methods=['GET', 'POST'])
 @farmer_required
 def edit_farm_profile():
-    """Route for farmers to edit their profile."""
+    """Route for farmers to edit their profile and resubmit verification if needed."""
     farm = Farm.query.filter_by(user_id=current_user.id).first_or_404()
     
     if request.method == 'POST':
@@ -1603,27 +2267,88 @@ def edit_farm_profile():
         farm.farm_type = request.form.get('farm_type')
         farm.latitude = safe_float(request.form.get('latitude'))
         farm.longitude = safe_float(request.form.get('longitude'))
+        
+        license_num = request.form.get('license_number', '').strip()
+        if license_num:
+            farm.license_number = license_num
+
+        # If farm was rejected or needed more info, re-submitting moves it back to PENDING for review
+        prev_status = farm.verification_status
+        if prev_status in [VerificationStatus.REJECTED, VerificationStatus.NEEDS_MORE_INFORMATION]:
+            farm.verification_status = VerificationStatus.PENDING
+            farm.verification_notes = f"Resubmitted by farmer on {datetime.datetime.now().strftime('%b %d, %Y %I:%M %p')}"
+            log_audit(current_user.id, current_user.email, 'farmer', 'FARM_VERIFICATION_RESUBMITTED', 'farm', farm.id, {
+                'previous_status': prev_status,
+                'name': farm.name
+            })
+            flash('Profile updated and resubmitted for administrative verification!', 'success')
+        else:
+            flash('Profile updated successfully!', 'success')
 
         db.session.commit()
-        flash('Profile updated successfully!', 'success')
         return redirect(url_for('manage_produce'))
         
     return render_template('edit_farm_profile.html', farm=farm)
+
+def infer_produce_unit(name: str = '', category: str = '') -> str:
+    """
+    Automatically infers appropriate produce unit based on item name and category.
+    Examples:
+      - Milk, curd, juice, oil, liquids -> 'per liter'
+      - Eggs -> 'per dozen'
+      - Spinach, coriander, mint, herbs -> 'per bunch'
+      - Honey, jam, pickle -> 'per 500g jar'
+      - Coconut, watermelon, cabbage, pumpkin -> 'per piece'
+      - Vegetables, fruits, grains -> 'per kg'
+    """
+    n = (name or '').strip().lower()
+    c = (category or '').strip().lower()
+
+    # 1. Produce keywords in item name
+    if any(k in n for k in ['milk', 'doodh', 'curd', 'dahi', 'yogurt', 'lassi', 'buttermilk', 'chaas', 'juice', 'oil', 'liquid', 'ghee', 'shake']):
+        return 'per liter'
+    if any(k in n for k in ['egg', 'anda']):
+        return 'per dozen'
+    if any(k in n for k in ['spinach', 'palak', 'coriander', 'cilantro', 'dhaniya', 'methi', 'fenugreek', 'mint', 'pudina', 'kale', 'lettuce', 'bunch', 'parsley', 'basil', 'herb']):
+        return 'per bunch'
+    if any(k in n for k in ['honey', 'jam', 'pickle', 'achar']):
+        return 'per 500g jar'
+    if any(k in n for k in ['coconut', 'watermelon', 'pumpkin', 'cabbage', 'cauliflower', 'pineapple', 'papaya', 'piece', 'kaddu']):
+        return 'per piece'
+    if any(k in n for k in ['tomato', 'potato', 'onion', 'apple', 'banana', 'mango', 'carrot', 'rice', 'wheat', 'flour', 'atta', 'dal', 'grain', 'veg']):
+        return 'per kg'
+
+    # 2. Category fallbacks
+    if c == 'dairy':
+        return 'per liter'
+    if c == 'herbs':
+        return 'per bunch'
+    if c in ['vegetables', 'fruits', 'grains']:
+        return 'per kg'
+    return 'per kg'
 
 @app.route('/farmer/produce', methods=['GET', 'POST'])
 @farmer_required
 def manage_produce():
     """
     CRUD hub for Produce Items.
+    Restricts publishing if the farm is awaiting verification or rejected.
     """
     farm = Farm.query.filter_by(user_id=current_user.id).first_or_404()
     
     if request.method == 'POST':
-        name = request.form.get('name')
-        description = request.form.get('description')
+        # Business rule: unapproved farms cannot publish produce items
+        if farm.verification_status in [VerificationStatus.PENDING, VerificationStatus.REJECTED, VerificationStatus.NEEDS_MORE_INFORMATION]:
+            flash(f"Farm verification status is {farm.verification_status.replace('_', ' ').title()}. Only approved farms can publish new produce items.", 'warning')
+            return redirect(url_for('manage_produce'))
+
+        name = request.form.get('name', '').strip()
+        description = request.form.get('description', '').strip()
         price = float(request.form.get('price'))
-        unit = request.form.get('unit', 'per kg')
         category = request.form.get('category', 'Other')
+        unit = request.form.get('unit', '').strip()
+        if not unit:
+            unit = infer_produce_unit(name, category)
         image_url = request.form.get('image_url', '').strip()
         try:
             stock = int(request.form.get('stock', 0))
@@ -1658,11 +2383,14 @@ def edit_produce_item(item_id):
         return redirect(url_for('manage_produce'))
         
     if request.method == 'POST':
-        item.name = request.form.get('name')
-        item.description = request.form.get('description')
+        item.name = request.form.get('name', '').strip()
+        item.description = request.form.get('description', '').strip()
         item.price = float(request.form.get('price'))
-        item.unit = request.form.get('unit')
         item.category = request.form.get('category', getattr(item, 'category', 'Other') or 'Other')
+        unit = request.form.get('unit', '').strip()
+        if not unit:
+            unit = infer_produce_unit(item.name, item.category)
+        item.unit = unit
         item.image_url = request.form.get('image_url', '').strip()
         try:
             item.stock = int(request.form.get('stock', getattr(item, 'stock', 0) or 0))
@@ -1848,6 +2576,11 @@ def checkout():
             flash('Origin farm not found.', 'danger')
             return redirect(url_for('view_cart'))
 
+        # Check farm verification status
+        if farm.verification_status in [VerificationStatus.PENDING, VerificationStatus.REJECTED, VerificationStatus.NEEDS_MORE_INFORMATION]:
+            flash(f"Farm '{farm.name}' is currently awaiting administrative verification ({farm.verification_status.replace('_', ' ').title()}). Orders cannot be placed at this time.", 'warning')
+            return redirect(url_for('view_cart'))
+
         # Safe conditional atomic inventory deduction with rollback
         reserved_items = []
         stock_failed = False
@@ -1952,16 +2685,28 @@ def checkout():
 def order_details(order_id):
     order = Order.query.get_or_404(order_id)
     
-    # Security check: User is customer, farmer, or driver for this order
+    # Security check: User is customer, farmer, driver, or platform admin
     is_customer = current_user.id == order.customer_id
     is_farmer = current_user.role == 'farmer' and current_user.farm and current_user.farm.id == order.farm_id
     is_driver = current_user.role == 'driver' and (order.driver_id == current_user.id or order.status in [OrderStatus.READY_FOR_PICKUP, 'Ready for Pickup'])
+    is_admin = current_user.role == 'admin'
     
-    if not (is_customer or is_farmer or is_driver):
+    if not (is_customer or is_farmer or is_driver or is_admin):
         flash('You do not have permission to view this order.', 'danger')
         return redirect(url_for('home'))
         
-    return render_template('order_details.html', order=order)
+    farm_review = mongo_db['reviews'].find_one({'order_id': order.id, 'target_type': 'farm'})
+    driver_review = mongo_db['reviews'].find_one({'order_id': order.id, 'target_type': 'driver'})
+    complaints = list(mongo_db['complaints'].find({'order_id': order.id}))
+
+    return render_template(
+        'order_details.html',
+        order=order,
+        farm_review=farm_review,
+        driver_review=driver_review,
+        complaints=complaints,
+        is_admin=is_admin
+    )
 
 @app.route('/order/<int:order_id>/cancel', methods=['POST'])
 @login_required
@@ -2335,6 +3080,7 @@ def api_order_route(order_id):
 @driver_required
 def driver_dashboard():
     """Show driver available orders that are READY_FOR_PICKUP, and their active assigned orders."""
+    rate_per_km = get_driver_rate_per_km()
     all_driver_orders = Order.query.filter_by(driver_id=current_user.id).order_by(Order.created_at.desc()).all()
     
     ready_orders = Order.query.filter(
@@ -2351,12 +3097,20 @@ def driver_dashboard():
         if o.status in [OrderStatus.DELIVERED, 'Delivered']
     ]
 
+    total_finalized_earnings = sum(
+        float(getattr(o, 'driver_payout_amount', 0.0) or 0.0) for o in completed_orders
+    )
+    user_total = float(getattr(current_user, 'total_earnings', 0.0) or 0.0)
+    effective_earnings = round(max(total_finalized_earnings, user_total), 2)
+
     return render_template(
         'driver_dashboard.html',
         available_orders=available_orders,
         in_progress_orders=in_progress_orders,
         completed_orders=completed_orders,
-        orders=available_orders + in_progress_orders
+        orders=available_orders + in_progress_orders,
+        rate_per_km=rate_per_km,
+        total_driver_earnings=effective_earnings
     )
 
 @app.route('/driver/availability', methods=['POST'])
@@ -2390,6 +3144,15 @@ def driver_accept_order(order_id):
     Prevents race conditions using atomic MongoDB update.
     Transitions READY_FOR_PICKUP -> DRIVER_ASSIGNED (generates Pickup OTP).
     """
+    # Restrict unapproved drivers from accepting orders
+    driver_status = getattr(current_user, 'driver_verification_status', None) or current_user._data.get('driver_verification_status')
+    if driver_status in [VerificationStatus.PENDING, VerificationStatus.REJECTED, VerificationStatus.NEEDS_MORE_INFORMATION]:
+        status_clean = driver_status.replace('_', ' ').title()
+        if request.is_json:
+            return jsonify({'success': False, 'message': f'Driver account verification is {status_clean}. Only approved drivers can accept deliveries.'}), 403
+        flash(f'Your driver verification status is currently {status_clean}. Only approved drivers can accept delivery assignments.', 'danger')
+        return redirect(url_for('driver_dashboard'))
+
     now = datetime.datetime.now()
     now_iso = now.isoformat()
     now_display = now.strftime('%b %d, %I:%M %p')
@@ -2459,6 +3222,7 @@ def driver_accept_order(order_id):
     return redirect(url_for('driver_delivery', order_id=order.id))
 
 @app.route('/driver/delivery/<int:order_id>')
+@app.route('/driver/order/<int:order_id>/delivery')
 @driver_required
 def driver_delivery(order_id):
     order = Order.query.get_or_404(order_id)
@@ -2519,7 +3283,15 @@ def driver_complete_delivery(order_id):
         notes='Delivery successfully verified and completed with customer OTP'
     )
     if success:
-        flash(f'Order #{order.id} delivery verified and marked as Delivered! Thank you.', 'success')
+        payout_info = calculate_order_driver_earnings(order)
+        flash(
+            f'Order #{order.id} delivery verified and marked as Delivered! '
+            f'Driver Payout Finalized: ₹{payout_info["total_earning"]:.2f} '
+            f'(Pickup: {payout_info["pickup_distance_km"]} km -> ₹{payout_info["pickup_earning"]:.2f} + '
+            f'Drop: {payout_info["drop_distance_km"]} km -> ₹{payout_info["drop_earning"]:.2f} '
+            f'@ ₹{payout_info["rate_per_km"]:.2f}/km). Thank you!',
+            'success'
+        )
         return redirect(url_for('driver_dashboard'))
     else:
         flash(f'Error updating order: {err}', 'danger')
@@ -2645,8 +3417,9 @@ def handle_driver_location_update(data):
 
     now_ts = time.time()
     last_broadcast = LAST_GPS_BROADCAST.get(order_id, 0.0)
-    # Rate limit: max 1 broadcast every 1.5 seconds per order (bypassed in testing)
-    if not app.config.get('TESTING') and now_ts - last_broadcast < 1.5:
+    # Rate limit: max 1 broadcast every 0.2s for simulator, 1.0s for standard GPS (bypassed in testing)
+    min_interval = 0.2 if data.get('is_simulated') else 1.0
+    if not app.config.get('TESTING') and now_ts - last_broadcast < min_interval:
         return
     LAST_GPS_BROADCAST[order_id] = now_ts
 
@@ -2688,7 +3461,8 @@ def handle_driver_location_update(data):
         'driver_name': current_user.email.split('@')[0],
         'timestamp': now_str,
         'iso_timestamp': now_iso,
-        'is_active': True
+        'is_active': True,
+        'is_simulated': bool(data.get('is_simulated', False))
     }
     customer_room = f"order_{order_id}"
     emit('customer_location_update', location_payload, to=customer_room)  
@@ -2809,6 +3583,994 @@ def handle_stop_typing(data):
     order_room = f"order_{order_id}"
     
     socketio.emit('user_stopped_typing', to=order_room, skip_sid=request.sid)
+
+# ==============================================================================
+# FEATURE 1, 2, 3, 4, 5, 6, 7, 8, 9: ADMINISTRATOR & MONITORING SYSTEM
+# ==============================================================================
+
+def get_admin_dashboard_metrics():
+    """
+    Computes real-time platform metrics, financial KPIs, verification queues,
+    and operational statistics using MongoDB aggregation pipelines.
+    Gracefully handles empty datasets.
+    """
+    # User counts
+    total_customers = mongo_db['users'].count_documents({'role': 'customer'})
+    total_farmers = mongo_db['users'].count_documents({'role': 'farmer'})
+    total_drivers = mongo_db['users'].count_documents({'role': 'driver'})
+    total_admins = mongo_db['users'].count_documents({'role': 'admin'})
+    suspended_users = mongo_db['users'].count_documents({'is_suspended': True})
+
+    # Farm Verifications
+    pending_farms = mongo_db['farms'].count_documents({'verification_status': VerificationStatus.PENDING})
+    approved_farms = mongo_db['farms'].count_documents({'verification_status': VerificationStatus.APPROVED})
+    rejected_farms = mongo_db['farms'].count_documents({'verification_status': VerificationStatus.REJECTED})
+    info_needed_farms = mongo_db['farms'].count_documents({'verification_status': VerificationStatus.NEEDS_MORE_INFORMATION})
+
+    # Driver Verifications
+    pending_drivers = mongo_db['users'].count_documents({'role': 'driver', 'driver_verification_status': VerificationStatus.PENDING})
+    approved_drivers = mongo_db['users'].count_documents({'role': 'driver', 'driver_verification_status': VerificationStatus.APPROVED})
+    rejected_drivers = mongo_db['users'].count_documents({'role': 'driver', 'driver_verification_status': VerificationStatus.REJECTED})
+    info_needed_drivers = mongo_db['users'].count_documents({'role': 'driver', 'driver_verification_status': VerificationStatus.NEEDS_MORE_INFORMATION})
+
+    # Orders
+    total_orders = mongo_db['orders'].count_documents({})
+    completed_orders = mongo_db['orders'].count_documents({'status': {'$in': [OrderStatus.DELIVERED, 'Delivered']}})
+    cancelled_orders = mongo_db['orders'].count_documents({'status': {'$in': [OrderStatus.CANCELLED, 'Cancelled', 'Rejected']}})
+    active_orders = mongo_db['orders'].count_documents({
+        'status': {'$nin': [OrderStatus.DELIVERED, 'Delivered', OrderStatus.CANCELLED, 'Cancelled', 'Rejected']}
+    })
+
+    # Order status counts via aggregation
+    status_pipeline = [{'$group': {'_id': '$status', 'count': {'$sum': 1}}}]
+    status_counts_raw = list(mongo_db['orders'].aggregate(status_pipeline))
+    order_status_counts = {}
+    for item in status_counts_raw:
+        st = item.get('_id') or 'UNKNOWN'
+        order_status_counts[st] = item.get('count', 0)
+
+    # Gross Order Value (GMV) - sum of total_price for all non-cancelled orders
+    gmv_pipeline = [
+        {'$match': {'status': {'$nin': [OrderStatus.CANCELLED, 'Cancelled', 'Rejected']}}},
+        {'$group': {'_id': None, 'total': {'$sum': {'$toDouble': '$total_price'}}}}
+    ]
+    gmv_res = list(mongo_db['orders'].aggregate(gmv_pipeline))
+    total_gmv = round(float(gmv_res[0]['total']), 2) if gmv_res and gmv_res[0].get('total') is not None else 0.0
+
+    # Fulfilled Gross Value (Delivered orders only)
+    completed_pipeline = [
+        {'$match': {'status': {'$in': [OrderStatus.DELIVERED, 'Delivered']}}},
+        {'$group': {'_id': None, 'total': {'$sum': {'$toDouble': '$total_price'}}}}
+    ]
+    comp_res = list(mongo_db['orders'].aggregate(completed_pipeline))
+    completed_gmv = round(float(comp_res[0]['total']), 2) if comp_res and comp_res[0].get('total') is not None else 0.0
+
+    # Explicit financial calculations: 5% platform service fee on fulfilled orders
+    platform_fee_percent = 5.0
+    platform_revenue = round(completed_gmv * 0.05, 2)
+    farmer_net_payout = round(completed_gmv * 0.95, 2)
+
+    # Complaints
+    unresolved_complaints = mongo_db['complaints'].count_documents({
+        'status': {'$in': [ComplaintStatus.OPEN, ComplaintStatus.UNDER_REVIEW]}
+    })
+    total_complaints = mongo_db['complaints'].count_documents({})
+
+    # Reviews
+    reported_reviews = mongo_db['reviews'].count_documents({'is_reported': True, 'is_hidden': {'$ne': True}})
+    total_reviews = mongo_db['reviews'].count_documents({})
+
+    # Recent Audit Logs (last 10)
+    recent_logs = list(mongo_db['audit_logs'].find().sort('timestamp', pymongo.DESCENDING).limit(10))
+
+    # Recent Orders (last 6)
+    recent_orders_raw = list(mongo_db['orders'].find().sort('created_at', pymongo.DESCENDING).limit(6))
+    recent_orders = [Order.from_doc(d) for d in recent_orders_raw]
+
+    # Recent Complaints (last 5)
+    recent_complaints = list(mongo_db['complaints'].find().sort('created_at', pymongo.DESCENDING).limit(5))
+
+    return {
+        'total_customers': total_customers,
+        'total_farmers': total_farmers,
+        'total_drivers': total_drivers,
+        'total_admins': total_admins,
+        'suspended_users': suspended_users,
+        'pending_farms': pending_farms,
+        'approved_farms': approved_farms,
+        'rejected_farms': rejected_farms,
+        'info_needed_farms': info_needed_farms,
+        'pending_drivers': pending_drivers,
+        'approved_drivers': approved_drivers,
+        'rejected_drivers': rejected_drivers,
+        'info_needed_drivers': info_needed_drivers,
+        'total_orders': total_orders,
+        'completed_orders': completed_orders,
+        'cancelled_orders': cancelled_orders,
+        'active_orders': active_orders,
+        'order_status_counts': order_status_counts,
+        'total_gmv': total_gmv,
+        'completed_gmv': completed_gmv,
+        'platform_fee_percent': platform_fee_percent,
+        'platform_revenue': platform_revenue,
+        'farmer_net_payout': farmer_net_payout,
+        'driver_rate_per_km': get_driver_rate_per_km(),
+        'total_driver_payouts': round(sum(float(o.get('driver_payout_amount', 0.0) or 0.0) for o in mongo_db['orders'].find({'status': {'$in': [OrderStatus.DELIVERED, 'Delivered']}})), 2),
+        'unresolved_complaints': unresolved_complaints,
+        'total_complaints': total_complaints,
+        'reported_reviews': reported_reviews,
+        'total_reviews': total_reviews,
+        'recent_logs': recent_logs,
+        'recent_orders': recent_orders,
+        'recent_complaints': recent_complaints
+    }
+
+# --- Admin Dashboard Route ---
+
+@app.route('/admin')
+@app.route('/admin/dashboard')
+@admin_required
+def admin_dashboard():
+    """Renders the comprehensive administrative dashboard and platform monitor."""
+    metrics = get_admin_dashboard_metrics()
+    return render_template('admin/dashboard.html', metrics=metrics)
+
+# --- Admin Farm Verifications ---
+
+@app.route('/admin/verifications/farms')
+@admin_required
+def admin_farm_verifications():
+    """Review queue for farm verifications with status filters and server-side pagination."""
+    status_filter = request.args.get('status', 'ALL').strip().upper()
+    search_q = request.args.get('q', '').strip()
+    page = int(request.args.get('page', 1))
+    per_page = 10
+
+    # Tab badge counts
+    counts = {
+        'ALL': mongo_db['farms'].count_documents({}),
+        'PENDING': mongo_db['farms'].count_documents({'verification_status': VerificationStatus.PENDING}),
+        'APPROVED': mongo_db['farms'].count_documents({'verification_status': VerificationStatus.APPROVED}),
+        'REJECTED': mongo_db['farms'].count_documents({'verification_status': VerificationStatus.REJECTED}),
+        'NEEDS_MORE_INFORMATION': mongo_db['farms'].count_documents({'verification_status': VerificationStatus.NEEDS_MORE_INFORMATION}),
+    }
+
+    query_filter = {}
+    if status_filter != 'ALL':
+        query_filter['verification_status'] = status_filter
+    if search_q:
+        query_filter['$or'] = [
+            {'name': {'$regex': search_q, '$options': 'i'}},
+            {'address': {'$regex': search_q, '$options': 'i'}}
+        ]
+
+    total_count = mongo_db['farms'].count_documents(query_filter)
+    cursor = mongo_db['farms'].find(query_filter).sort('_id', pymongo.DESCENDING)
+    pagination = paginate_items(list(cursor), page=page, per_page=per_page)
+
+    farms_list = []
+    for fdoc in pagination['items']:
+        farm_obj = Farm.from_doc(fdoc)
+        farms_list.append(farm_obj)
+    pagination['items'] = farms_list
+
+    return render_template(
+        'admin/farm_verifications.html',
+        pagination=pagination,
+        status_filter=status_filter,
+        search_q=search_q,
+        counts=counts
+    )
+
+@app.route('/admin/verify-farm/<int:farm_id>', methods=['POST'])
+@admin_required
+def admin_verify_farm(farm_id):
+    """Administrator approves, rejects, or requests information on a farm."""
+    farm = Farm.query.get_or_404(farm_id)
+    action = request.form.get('action', '').strip().lower()
+    notes = request.form.get('notes', '').strip()
+
+    status_map = {
+        'approve': VerificationStatus.APPROVED,
+        'reject': VerificationStatus.REJECTED,
+        'request_info': VerificationStatus.NEEDS_MORE_INFORMATION
+    }
+
+    if action not in status_map:
+        flash('Invalid verification action specified.', 'danger')
+        return redirect(url_for('admin_farm_verifications'))
+
+    new_status = status_map[action]
+    prev_status = farm.verification_status
+    now = datetime.datetime.now()
+
+    farm.verification_status = new_status
+    farm.verification_notes = notes
+    farm.verified_at = now
+    farm.verified_by = current_user.email
+    farm.save()
+
+    # Record sensitive administrative action in audit log
+    log_audit(
+        actor_id=current_user.id,
+        actor_email=current_user.email,
+        actor_role='admin',
+        action=f"FARM_VERIFICATION_{new_status}",
+        target_type='farm',
+        target_id=farm.id,
+        details={
+            'farm_name': farm.name,
+            'previous_status': prev_status,
+            'new_status': new_status,
+            'notes': notes
+        }
+    )
+
+    action_verbs = {
+        'approve': 'approved',
+        'reject': 'rejected',
+        'request_info': 'marked as needing more information'
+    }
+    flash(f"Farm '{farm.name}' has been {action_verbs[action]} successfully.", 'success')
+    return redirect(url_for('admin_farm_verifications'))
+
+# --- Admin Driver Verifications ---
+
+@app.route('/admin/verifications/drivers')
+@admin_required
+def admin_driver_verifications():
+    """Review queue for delivery drivers with status filters and server-side pagination."""
+    status_filter = request.args.get('status', 'ALL').strip().upper()
+    search_q = request.args.get('q', '').strip()
+    page = int(request.args.get('page', 1))
+    per_page = 10
+
+    counts = {
+        'ALL': mongo_db['users'].count_documents({'role': 'driver'}),
+        'PENDING': mongo_db['users'].count_documents({'role': 'driver', 'driver_verification_status': VerificationStatus.PENDING}),
+        'APPROVED': mongo_db['users'].count_documents({'role': 'driver', 'driver_verification_status': VerificationStatus.APPROVED}),
+        'REJECTED': mongo_db['users'].count_documents({'role': 'driver', 'driver_verification_status': VerificationStatus.REJECTED}),
+        'NEEDS_MORE_INFORMATION': mongo_db['users'].count_documents({'role': 'driver', 'driver_verification_status': VerificationStatus.NEEDS_MORE_INFORMATION}),
+    }
+
+    query_filter = {'role': 'driver'}
+    if status_filter != 'ALL':
+        query_filter['driver_verification_status'] = status_filter
+    if search_q:
+        query_filter['$or'] = [
+            {'email': {'$regex': search_q, '$options': 'i'}},
+            {'name': {'$regex': search_q, '$options': 'i'}},
+            {'driver_license_number': {'$regex': search_q, '$options': 'i'}}
+        ]
+
+    total_count = mongo_db['users'].count_documents(query_filter)
+    cursor = mongo_db['users'].find(query_filter).sort('_id', pymongo.DESCENDING)
+    pagination = paginate_items(list(cursor), page=page, per_page=per_page)
+
+    drivers_list = [User.from_doc(d) for d in pagination['items']]
+    pagination['items'] = drivers_list
+
+    return render_template(
+        'admin/driver_verifications.html',
+        pagination=pagination,
+        status_filter=status_filter,
+        search_q=search_q,
+        counts=counts
+    )
+
+@app.route('/admin/verify-driver/<int:driver_id>', methods=['POST'])
+@admin_required
+def admin_verify_driver(driver_id):
+    """Administrator approves, rejects, or requests info on a delivery driver."""
+    driver = User.query.get_or_404(driver_id)
+    if driver.role != 'driver':
+        flash('Target user is not a registered delivery driver.', 'danger')
+        return redirect(url_for('admin_driver_verifications'))
+
+    action = request.form.get('action', '').strip().lower()
+    notes = request.form.get('notes', '').strip()
+
+    status_map = {
+        'approve': VerificationStatus.APPROVED,
+        'reject': VerificationStatus.REJECTED,
+        'request_info': VerificationStatus.NEEDS_MORE_INFORMATION
+    }
+
+    if action not in status_map:
+        flash('Invalid driver verification action.', 'danger')
+        return redirect(url_for('admin_driver_verifications'))
+
+    new_status = status_map[action]
+    prev_status = getattr(driver, 'driver_verification_status', 'UNKNOWN')
+    now = datetime.datetime.now()
+
+    driver.driver_verification_status = new_status
+    driver.driver_verification_notes = notes
+    driver.driver_verified_at = now
+    driver.driver_verified_by = current_user.email
+    driver.save()
+
+    log_audit(
+        actor_id=current_user.id,
+        actor_email=current_user.email,
+        actor_role='admin',
+        action=f"DRIVER_VERIFICATION_{new_status}",
+        target_type='user',
+        target_id=driver.id,
+        details={
+            'driver_email': driver.email,
+            'previous_status': prev_status,
+            'new_status': new_status,
+            'notes': notes
+        }
+    )
+
+    action_verbs = {
+        'approve': 'approved',
+        'reject': 'rejected',
+        'request_info': 'marked as needing more information'
+    }
+    flash(f"Driver '{driver.email}' verification has been {action_verbs[action]}.", 'success')
+    return redirect(url_for('admin_driver_verifications'))
+
+# --- Admin User Management ---
+
+@app.route('/admin/users')
+@admin_required
+def admin_users():
+    """Directory of all users with search, role filtering, suspension controls, and pagination."""
+    role_filter = request.args.get('role', 'ALL').strip().lower()
+    status_filter = request.args.get('status', 'ALL').strip().lower()
+    search_q = request.args.get('q', '').strip()
+    page = int(request.args.get('page', 1))
+    per_page = 15
+
+    query_filter = {}
+    if role_filter != 'all':
+        query_filter['role'] = role_filter
+    if status_filter == 'active':
+        query_filter['is_suspended'] = {'$ne': True}
+    elif status_filter == 'suspended':
+        query_filter['is_suspended'] = True
+
+    if search_q:
+        query_filter['$or'] = [
+            {'email': {'$regex': search_q, '$options': 'i'}},
+            {'name': {'$regex': search_q, '$options': 'i'}}
+        ]
+
+    cursor = mongo_db['users'].find(query_filter).sort('_id', pymongo.DESCENDING)
+    pagination = paginate_items(list(cursor), page=page, per_page=per_page)
+
+    users_list = []
+    for udoc in pagination['items']:
+        u_obj = User.from_doc(udoc)
+        # Attach order count without exposing sensitive fields
+        if u_obj.role == 'customer':
+            u_obj.order_count = mongo_db['orders'].count_documents({'customer_id': u_obj.id})
+        elif u_obj.role == 'driver':
+            u_obj.order_count = mongo_db['orders'].count_documents({'driver_id': u_obj.id})
+        elif u_obj.role == 'farmer':
+            farm = u_obj.farm
+            u_obj.order_count = mongo_db['orders'].count_documents({'farm_id': farm.id}) if farm else 0
+        else:
+            u_obj.order_count = 0
+        users_list.append(u_obj)
+    pagination['items'] = users_list
+
+    return render_template(
+        'admin/users.html',
+        pagination=pagination,
+        role_filter=role_filter,
+        status_filter=status_filter,
+        search_q=search_q
+    )
+
+@app.route('/admin/user/<int:user_id>/toggle-suspend', methods=['POST'])
+@admin_required
+def admin_toggle_user_suspend(user_id):
+    """
+    Suspends or reactivates a user account with justification reason.
+    Prevents an administrator from locking out the last active admin account.
+    """
+    target = User.query.get_or_404(user_id)
+
+    # Safety Guard: Prevent lockout of the last active administrator
+    if target.role == 'admin':
+        if target.id == current_user.id:
+            flash('Safety restriction: You cannot suspend your own administrative account.', 'danger')
+            return redirect(url_for('admin_users'))
+        if not target.is_suspended:
+            active_admins = mongo_db['users'].count_documents({
+                'role': 'admin',
+                'is_suspended': {'$ne': True}
+            })
+            if active_admins <= 1:
+                flash('Safety restriction: Cannot suspend the last remaining active administrator on the platform.', 'danger')
+                return redirect(url_for('admin_users'))
+
+    now = datetime.datetime.now()
+    if target.is_suspended:
+        # Reactivate account
+        target.is_suspended = False
+        target.suspension_reason = None
+        target.save()
+
+        log_audit(
+            actor_id=current_user.id,
+            actor_email=current_user.email,
+            actor_role='admin',
+            action='USER_REACTIVATED',
+            target_type='user',
+            target_id=target.id,
+            details={'email': target.email, 'role': target.role}
+        )
+        flash(f"Account '{target.email}' has been reactivated successfully.", 'success')
+    else:
+        # Suspend account
+        reason = request.form.get('reason', '').strip() or 'Policy violation / administrative enforcement'
+        target.is_suspended = True
+        target.suspension_reason = reason
+        target.suspended_at = now
+        target.suspended_by = current_user.email
+        target.save()
+
+        log_audit(
+            actor_id=current_user.id,
+            actor_email=current_user.email,
+            actor_role='admin',
+            action='USER_SUSPENDED',
+            target_type='user',
+            target_id=target.id,
+            details={'email': target.email, 'role': target.role, 'reason': reason}
+        )
+        flash(f"Account '{target.email}' has been suspended.", 'warning')
+
+    return redirect(url_for('admin_users'))
+
+# --- Admin Complaints & Disputes ---
+
+@app.route('/admin/complaints')
+@admin_required
+def admin_complaints():
+    """List of customer disputes and complaints with status and category filtering."""
+    status_filter = request.args.get('status', 'ALL').strip().upper()
+    cat_filter = request.args.get('category', 'ALL').strip()
+    search_q = request.args.get('q', '').strip()
+    page = int(request.args.get('page', 1))
+    per_page = 15
+
+    query_filter = {}
+    if status_filter != 'ALL':
+        query_filter['status'] = status_filter
+    if cat_filter != 'ALL':
+        query_filter['category'] = cat_filter
+    if search_q:
+        query_filter['$or'] = [
+            {'customer_email': {'$regex': search_q, '$options': 'i'}},
+            {'description': {'$regex': search_q, '$options': 'i'}}
+        ]
+        if search_q.isdigit():
+            query_filter['$or'].append({'order_id': int(search_q)})
+
+    cursor = mongo_db['complaints'].find(query_filter).sort('_id', pymongo.DESCENDING)
+    pagination = paginate_items(list(cursor), page=page, per_page=per_page)
+
+    complaints_list = []
+    for cdoc in pagination['items']:
+        c_obj = Complaint.from_doc(cdoc)
+        complaints_list.append(c_obj)
+    pagination['items'] = complaints_list
+
+    return render_template(
+        'admin/complaints.html',
+        pagination=pagination,
+        status_filter=status_filter,
+        cat_filter=cat_filter,
+        search_q=search_q,
+        categories=ComplaintCategory.all_categories()
+    )
+
+@app.route('/admin/complaint/<int:complaint_id>', methods=['GET', 'POST'])
+@app.route('/admin/complaints/<int:complaint_id>', methods=['GET', 'POST'])
+@admin_required
+def admin_complaint_details(complaint_id):
+    """Detailed view of a customer dispute and administration resolution form."""
+    complaint_doc = mongo_db['complaints'].find_one({'$or': [{'_id': complaint_id}, {'id': complaint_id}]})
+    if not complaint_doc:
+        abort(404)
+    complaint = Complaint.from_doc(complaint_doc)
+    order = Order.query.get(complaint.order_id)
+
+    if request.method == 'POST':
+        new_status = request.form.get('status')
+        admin_notes = request.form.get('admin_notes', '').strip()
+
+        valid_statuses = [ComplaintStatus.OPEN, ComplaintStatus.UNDER_REVIEW, ComplaintStatus.RESOLVED, ComplaintStatus.REJECTED]
+        if new_status not in valid_statuses:
+            flash('Invalid complaint status selected.', 'danger')
+            return redirect(url_for('admin_complaint_details', complaint_id=complaint.id))
+
+        now = datetime.datetime.now()
+        complaint.status = new_status
+        complaint.admin_notes = admin_notes
+        complaint._data['updated_at'] = now
+        if new_status in [ComplaintStatus.RESOLVED, ComplaintStatus.REJECTED]:
+            complaint._data['resolved_at'] = now
+            complaint._data['resolved_by'] = current_user.email
+        complaint.save()
+
+        log_audit(
+            actor_id=current_user.id,
+            actor_email=current_user.email,
+            actor_role='admin',
+            action=f"COMPLAINT_STATUS_{new_status}",
+            target_type='complaint',
+            target_id=complaint.id,
+            details={
+                'order_id': complaint.order_id,
+                'status': new_status,
+                'notes': admin_notes
+            }
+        )
+        flash('Complaint status and resolution notes updated successfully.', 'success')
+        return redirect(url_for('admin_complaint_details', complaint_id=complaint.id))
+
+    return render_template('admin/complaint_details.html', complaint=complaint, order=order)
+
+# --- Admin Customer Reviews Moderation ---
+
+@app.route('/admin/reviews')
+@admin_required
+def admin_reviews():
+    """Review moderation dashboard for managing reported, hidden, and authentic customer feedback."""
+    filter_mode = request.args.get('filter', 'ALL').strip().lower()
+    target_filter = request.args.get('target', 'ALL').strip().lower()
+    page = int(request.args.get('page', 1))
+    per_page = 15
+
+    query_filter = {}
+    if filter_mode == 'reported':
+        query_filter['is_reported'] = True
+    elif filter_mode == 'moderated':
+        query_filter['is_hidden'] = True
+
+    if target_filter in ['farm', 'driver']:
+        query_filter['target_type'] = target_filter
+
+    cursor = mongo_db['reviews'].find(query_filter).sort('_id', pymongo.DESCENDING)
+    pagination = paginate_items(list(cursor), page=page, per_page=per_page)
+
+    reviews_list = [Review.from_doc(rdoc) for rdoc in pagination['items']]
+    pagination['items'] = reviews_list
+
+    return render_template(
+        'admin/reviews.html',
+        pagination=pagination,
+        filter_mode=filter_mode,
+        target_filter=target_filter
+    )
+
+@app.route('/admin/review/<int:review_id>/moderate', methods=['POST'])
+@admin_required
+def admin_moderate_review(review_id):
+    """Admin hides, restores, or dismisses reports on customer reviews."""
+    review_doc = mongo_db['reviews'].find_one({'$or': [{'_id': review_id}, {'id': review_id}]})
+    if not review_doc:
+        abort(404)
+    review = Review.from_doc(review_doc)
+
+    action = request.form.get('action', '').strip().lower()
+    now = datetime.datetime.now()
+
+    if action == 'hide':
+        review.is_hidden = True
+        review.moderated_at = now
+        review.moderated_by = current_user.email
+        review.save()
+        log_audit(current_user.id, current_user.email, 'admin', 'REVIEW_HIDDEN', 'review', review.id)
+        flash('Review has been hidden from public display.', 'warning')
+    elif action == 'restore':
+        review.is_hidden = False
+        review.moderated_at = now
+        review.moderated_by = current_user.email
+        review.save()
+        log_audit(current_user.id, current_user.email, 'admin', 'REVIEW_RESTORED', 'review', review.id)
+        flash('Review has been restored to public view.', 'success')
+    elif action == 'dismiss_report':
+        review.is_reported = False
+        review.report_reason = None
+        review.save()
+        log_audit(current_user.id, current_user.email, 'admin', 'REVIEW_REPORT_DISMISSED', 'review', review.id)
+        flash('Report flag dismissed.', 'info')
+    else:
+        flash('Invalid moderation action.', 'danger')
+
+    return redirect(url_for('admin_reviews'))
+
+# --- Admin Audit Logs ---
+
+@app.route('/admin/audit-logs')
+@admin_required
+def admin_audit_logs():
+    """Security audit trail displaying all sensitive administrative and platform actions."""
+    action_filter = request.args.get('action', 'ALL').strip()
+    target_filter = request.args.get('target_type', 'ALL').strip().lower()
+    page = int(request.args.get('page', 1))
+    per_page = 20
+
+    query_filter = {}
+    if action_filter != 'ALL':
+        query_filter['action'] = action_filter
+    if target_filter != 'all':
+        query_filter['target_type'] = target_filter
+
+    cursor = mongo_db['audit_logs'].find(query_filter).sort('timestamp', pymongo.DESCENDING)
+    pagination = paginate_items(list(cursor), page=page, per_page=per_page)
+
+    return render_template(
+        'admin/audit_logs.html',
+        pagination=pagination,
+        action_filter=action_filter,
+        target_filter=target_filter
+    )
+
+# --- Admin Platform Settings & Driver Earning Rates ---
+
+@app.route('/admin/settings', methods=['GET'])
+@admin_required
+def admin_settings():
+    """Displays platform settings including driver earning rates and operational parameters."""
+    rate = get_driver_rate_per_km()
+    setting_doc = mongo_db['platform_settings'].find_one({'_id': 'driver_rate_per_km'}) or {}
+    
+    # Recent rate change audit logs
+    rate_logs = list(mongo_db['audit_logs'].find(
+        {'action': 'DRIVER_RATE_UPDATED'}
+    ).sort('timestamp', pymongo.DESCENDING).limit(10))
+    
+    # Financial aggregate metrics
+    delivered_orders = list(mongo_db['orders'].find({
+        'status': {'$in': [OrderStatus.DELIVERED, 'Delivered']},
+        'driver_payout_finalized': True
+    }))
+    total_payouts_disbursed = round(sum(float(o.get('driver_payout_amount', 0.0) or 0.0) for o in delivered_orders), 2)
+    total_payable_km_disbursed = round(sum(float(o.get('driver_payable_distance_km', 0.0) or 0.0) for o in delivered_orders), 2)
+    
+    return render_template(
+        'admin/settings.html',
+        driver_rate_per_km=rate,
+        setting_doc=setting_doc,
+        rate_logs=rate_logs,
+        total_payouts_disbursed=total_payouts_disbursed,
+        total_payable_km_disbursed=total_payable_km_disbursed,
+        payouts_count=len(delivered_orders)
+    )
+
+@app.route('/admin/settings/driver-rate', methods=['POST'])
+@admin_required
+def admin_update_driver_rate():
+    """Updates the configurable driver earning rate per kilometer."""
+    if request.is_json:
+        data = request.get_json() or {}
+        new_rate = data.get('rate')
+    else:
+        new_rate = request.form.get('rate')
+        
+    try:
+        new_rate_val = float(new_rate)
+        if new_rate_val <= 0:
+            raise ValueError("Rate must be greater than zero.")
+        set_driver_rate_per_km(new_rate_val, current_user)
+        
+        if request.is_json:
+            return jsonify({
+                'success': True,
+                'rate': new_rate_val,
+                'message': f"Driver earning rate updated to ₹{new_rate_val:.2f} per km."
+            })
+        flash(f"Driver earning rate successfully updated to ₹{new_rate_val:.2f} per km.", "success")
+    except (TypeError, ValueError) as e:
+        if request.is_json:
+            return jsonify({'success': False, 'message': f"Invalid rate: {e}"}), 400
+        flash(f"Invalid rate value. Please provide a positive number: {e}", "danger")
+        
+    return redirect(url_for('admin_settings'))
+
+# ==============================================================================
+# CUSTOMER REVIEWS, COMPLAINTS & DRIVER VERIFICATION PROFILE ROUTES
+# ==============================================================================
+
+@app.route('/order/<int:order_id>/review', methods=['GET', 'POST'])
+@login_required
+def submit_order_review(order_id):
+    """
+    Allows eligible customers to submit authentic 1-5 star ratings and reviews
+    for their completed (DELIVERED) orders.
+    Enforces review uniqueness per target and prevents unauthorized manipulation.
+    """
+    if current_user.role != 'customer':
+        flash('Only customers can review orders.', 'danger')
+        return redirect(url_for('order_details', order_id=order_id))
+
+    order = Order.query.get_or_404(order_id)
+    if order.customer_id != current_user.id:
+        flash('You can only review your own orders.', 'danger')
+        return redirect(url_for('home'))
+
+    # Order must be completed
+    norm_status = NORMALIZED_STATUS.get(order.status, order.status)
+    if norm_status != OrderStatus.DELIVERED:
+        flash('Reviews can only be submitted for completed (Delivered) orders.', 'warning')
+        return redirect(url_for('order_details', order_id=order.id))
+
+    # Check for existing reviews
+    existing_farm_rev = mongo_db['reviews'].find_one({'order_id': order.id, 'target_type': 'farm'})
+    existing_driver_rev = mongo_db['reviews'].find_one({'order_id': order.id, 'target_type': 'driver'})
+
+    if request.method == 'POST':
+        farm_rating = request.form.get('farm_rating')
+        farm_comment = request.form.get('farm_comment', '').strip()
+        driver_rating = request.form.get('driver_rating')
+        driver_comment = request.form.get('driver_comment', '').strip()
+
+        submitted_any = False
+        now = datetime.datetime.now()
+
+        # Submit farm review
+        if farm_rating and not existing_farm_rev:
+            try:
+                fr = int(farm_rating)
+                if 1 <= fr <= 5:
+                    rev_id = get_next_id('reviews')
+                    mongo_db['reviews'].insert_one({
+                        '_id': rev_id,
+                        'id': rev_id,
+                        'order_id': order.id,
+                        'customer_id': current_user.id,
+                        'customer_email': current_user.email,
+                        'target_type': 'farm',
+                        'target_id': order.farm_id,
+                        'rating': fr,
+                        'comment': farm_comment,
+                        'created_at': now,
+                        'created_at_display': now.strftime('%b %d, %Y'),
+                        'is_reported': False,
+                        'is_hidden': False
+                    })
+                    submitted_any = True
+            except (ValueError, TypeError):
+                flash('Invalid farm rating value. Must be between 1 and 5.', 'danger')
+
+        # Submit driver review if order had a driver assigned
+        if driver_rating and order.driver_id and not existing_driver_rev:
+            try:
+                dr = int(driver_rating)
+                if 1 <= dr <= 5:
+                    rev_id = get_next_id('reviews')
+                    mongo_db['reviews'].insert_one({
+                        '_id': rev_id,
+                        'id': rev_id,
+                        'order_id': order.id,
+                        'customer_id': current_user.id,
+                        'customer_email': current_user.email,
+                        'target_type': 'driver',
+                        'target_id': order.driver_id,
+                        'rating': dr,
+                        'comment': driver_comment,
+                        'created_at': now,
+                        'created_at_display': now.strftime('%b %d, %Y'),
+                        'is_reported': False,
+                        'is_hidden': False
+                    })
+                    submitted_any = True
+            except (ValueError, TypeError):
+                flash('Invalid driver rating value. Must be between 1 and 5.', 'danger')
+
+        if submitted_any:
+            flash('Thank you! Your review has been submitted successfully.', 'success')
+        elif existing_farm_rev and (existing_driver_rev or not order.driver_id):
+            flash('You have already submitted reviews for this order.', 'info')
+
+        return redirect(url_for('order_details', order_id=order.id))
+
+    return render_template(
+        'submit_review.html',
+        order=order,
+        existing_farm_rev=existing_farm_rev,
+        existing_driver_rev=existing_driver_rev
+    )
+
+@app.route('/review/<int:review_id>/report', methods=['POST'])
+@login_required
+def report_review(review_id):
+    """Allows users to report abusive, inappropriate or fraudulent reviews for administrative moderation."""
+    review_doc = mongo_db['reviews'].find_one({'$or': [{'_id': review_id}, {'id': review_id}]})
+    if not review_doc:
+        flash('Review not found.', 'danger')
+        return redirect(request.referrer or url_for('home'))
+
+    reason = request.form.get('reason', '').strip() or 'Inappropriate or abusive content'
+    now = datetime.datetime.now()
+
+    mongo_db['reviews'].update_one(
+        {'_id': review_doc['_id']},
+        {
+            '$set': {
+                'is_reported': True,
+                'report_reason': reason,
+                'reported_by': current_user.id,
+                'reported_at': now
+            }
+        }
+    )
+    flash('Review has been reported to administrators for moderation.', 'info')
+    return redirect(request.referrer or url_for('home'))
+
+@app.route('/order/<int:order_id>/complaint', methods=['GET', 'POST'])
+@login_required
+def submit_order_complaint(order_id):
+    """Allows customers to report issues and file disputes linked to their orders."""
+    order = Order.query.get_or_404(order_id)
+    if order.customer_id != current_user.id and current_user.role != 'admin':
+        flash('You can only file complaints on your own orders.', 'danger')
+        return redirect(url_for('home'))
+
+    if request.method == 'POST':
+        category = request.form.get('category', '').strip()
+        description = request.form.get('description', '').strip()
+
+        matched_category = None
+        for cat in ComplaintCategory.all_categories():
+            if cat.lower() == category.lower():
+                matched_category = cat
+                break
+
+        if not matched_category:
+            flash('Please select a valid complaint category.', 'danger')
+            return redirect(url_for('submit_order_complaint', order_id=order.id))
+
+        category = matched_category
+
+        if not description:
+            flash('Please provide a detailed description of the issue.', 'danger')
+            return redirect(url_for('submit_order_complaint', order_id=order.id))
+
+        now = datetime.datetime.now()
+        comp_id = get_next_id('complaints')
+        comp_doc = {
+            '_id': comp_id,
+            'id': comp_id,
+            'order_id': order.id,
+            'customer_id': current_user.id,
+            'customer_email': current_user.email,
+            'category': category,
+            'description': description,
+            'status': ComplaintStatus.OPEN,
+            'admin_notes': '',
+            'created_at': now,
+            'created_at_display': now.strftime('%b %d, %Y %I:%M %p'),
+            'updated_at': now
+        }
+        mongo_db['complaints'].insert_one(comp_doc)
+
+        log_audit(
+            actor_id=current_user.id,
+            actor_email=current_user.email,
+            actor_role=current_user.role,
+            action='COMPLAINT_FILED',
+            target_type='complaint',
+            target_id=comp_id,
+            details={'order_id': order.id, 'category': category}
+        )
+
+        flash('Your complaint has been submitted. Our dispute resolution team will review it shortly.', 'success')
+        return redirect(url_for('view_complaint', complaint_id=comp_id))
+
+    return render_template(
+        'submit_complaint.html',
+        order=order,
+        categories=ComplaintCategory.all_categories()
+    )
+
+@app.route('/complaint/<int:complaint_id>')
+@login_required
+def view_complaint(complaint_id):
+    """
+    Secure complaint tracking view.
+    Only authorized participants (customer, farmer, assigned driver, or admin) may view details.
+    """
+    comp_doc = mongo_db['complaints'].find_one({'$or': [{'_id': complaint_id}, {'id': complaint_id}]})
+    if not comp_doc:
+        flash('Complaint not found.', 'danger')
+        return redirect(url_for('home'))
+
+    complaint = Complaint.from_doc(comp_doc)
+    order = Order.query.get(complaint.order_id)
+
+    # Strict authorization check
+    is_customer = current_user.id == complaint.customer_id
+    is_farmer = current_user.role == 'farmer' and current_user.farm and order and current_user.farm.id == order.farm_id
+    is_driver = current_user.role == 'driver' and order and order.driver_id == current_user.id
+    is_admin = current_user.role == 'admin'
+
+    if not (is_customer or is_farmer or is_driver or is_admin):
+        flash('Access denied. You are not authorized to view this complaint.', 'danger')
+        abort(403)
+
+    if is_admin:
+        return redirect(url_for('admin_complaint_details', complaint_id=complaint.id))
+
+    return render_template('complaint_details.html', complaint=complaint, order=order)
+
+@app.route('/driver/profile/verification', methods=['GET', 'POST'])
+@driver_required
+def driver_verification_profile():
+    """Allows drivers to view their verification status and submit/resubmit license and vehicle details."""
+    driver = current_user
+
+    if request.method == 'POST':
+        license_num = request.form.get('driver_license_number', '').strip()
+        vehicle_type = request.form.get('driver_vehicle_type', '').strip()
+
+        if not license_num or not vehicle_type:
+            flash('License number and vehicle type are required.', 'danger')
+            return redirect(url_for('driver_verification_profile'))
+
+        driver.driver_license_number = license_num
+        driver.driver_vehicle_type = vehicle_type
+        
+        # If rejected or needs info, reset to PENDING for review
+        prev_status = getattr(driver, 'driver_verification_status', VerificationStatus.PENDING)
+        if prev_status in [VerificationStatus.REJECTED, VerificationStatus.NEEDS_MORE_INFORMATION]:
+            driver.driver_verification_status = VerificationStatus.PENDING
+            driver.driver_verification_notes = f"Resubmitted by driver on {datetime.datetime.now().strftime('%b %d, %Y %I:%M %p')}"
+            log_audit(driver.id, driver.email, 'driver', 'DRIVER_VERIFICATION_RESUBMITTED', 'user', driver.id)
+            flash('Details updated and resubmitted for verification review!', 'success')
+        else:
+            flash('Driver details updated successfully.', 'success')
+
+        driver.save()
+        return redirect(url_for('driver_dashboard'))
+
+    return render_template('driver_verification_profile.html', driver=driver)
+
+# --- Admin Setup Helper & CLI ---
+
+def create_admin_account(email, password, name=None):
+    """Establishes or promotes an account to administrator role."""
+    email = email.strip().lower()
+    user = User.query.filter_by(email=email).first()
+    if user:
+        user.role = 'admin'
+        user.is_suspended = False
+        user.set_password(password)
+        if name:
+            user.name = name
+        user.save()
+        print(f"[OK] Existing account '{email}' promoted to Administrator.")
+        return user
+    else:
+        user = User(
+            email=email,
+            role='admin',
+            name=name or email.split('@')[0].title(),
+            is_suspended=False,
+            created_at=datetime.datetime.now()
+        )
+        user.set_password(password)
+        db.session.add(user)
+        db.session.commit()
+        print(f"[OK] Administrator '{email}' created successfully.")
+        return user
+
+@app.cli.command('create-admin')
+def create_admin_cli():
+    """Secure interactive Flask CLI command to create an administrator."""
+    import getpass
+    email = input("Admin Email: ").strip()
+    password = getpass.getpass("Admin Password: ")
+    create_admin_account(email, password)
 
 if __name__ == '__main__':
     with app.app_context():

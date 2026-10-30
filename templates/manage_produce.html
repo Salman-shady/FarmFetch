@@ -48,15 +48,30 @@
                         </select>
                     </div>
                     <div class="col-md-2">
-                        <label for="price" class="form-label">Price ($)</label>
+                        <label for="price" class="form-label fw-semibold">Price (₹)</label>
                         <div class="input-group">
-                            <span class="input-group-text bg-white border-end-0 text-muted">$</span>
-                            <input type="number" step="0.01" class="form-control border-start-0 ps-0" id="price" name="price" placeholder="4.50" min="0.01" required>
+                            <span class="input-group-text bg-white border-end-0 text-muted fw-bold">₹</span>
+                            <input type="number" step="0.01" class="form-control border-start-0 ps-0" id="price" name="price" placeholder="45.00" min="0.01" required>
                         </div>
                     </div>
                     <div class="col-md-3">
-                        <label for="unit" class="form-label">Unit of Measure</label>
-                        <input type="text" class="form-control" id="unit" name="unit" value="per kg" placeholder="e.g., per kg, per bunch, per dozen" required>
+                        <div class="d-flex justify-content-between align-items-center mb-1">
+                            <label for="unit" class="form-label fw-semibold mb-0">Unit of Measure</label>
+                            <span id="unit-auto-badge" class="badge bg-success-subtle text-success border border-success-subtle py-1 px-2" style="font-size:0.7rem;">
+                                <i class="bi bi-magic me-1"></i>Auto: per kg
+                            </span>
+                        </div>
+                        <input type="text" class="form-control" id="unit" name="unit" value="per kg" placeholder="e.g., per kg, per liter, per dozen" required>
+                        <!-- Quick unit chips -->
+                        <div class="mt-1 d-flex flex-wrap gap-1 align-items-center">
+                            <small class="text-muted" style="font-size:0.72rem;">Quick units:</small>
+                            <button type="button" class="btn btn-light btn-sm py-0 px-1 border chip-unit-select" data-unit="per kg" style="font-size:0.75rem;">per kg</button>
+                            <button type="button" class="btn btn-light btn-sm py-0 px-1 border chip-unit-select" data-unit="per liter" style="font-size:0.75rem;">per liter</button>
+                            <button type="button" class="btn btn-light btn-sm py-0 px-1 border chip-unit-select" data-unit="per dozen" style="font-size:0.75rem;">per dozen</button>
+                            <button type="button" class="btn btn-light btn-sm py-0 px-1 border chip-unit-select" data-unit="per bunch" style="font-size:0.75rem;">per bunch</button>
+                            <button type="button" class="btn btn-light btn-sm py-0 px-1 border chip-unit-select" data-unit="per piece" style="font-size:0.75rem;">per piece</button>
+                            <button type="button" class="btn btn-light btn-sm py-0 px-1 border chip-unit-select" data-unit="per 500g" style="font-size:0.75rem;">per 500g</button>
+                        </div>
                     </div>
                 </div>
 
@@ -74,12 +89,13 @@
                         <!-- Quick sample image buttons -->
                         <div class="mt-1 d-flex flex-wrap gap-1 align-items-center">
                             <small class="text-muted" style="font-size:0.75rem;">Sample photos:</small>
-                            <button type="button" class="btn btn-light btn-sm py-0 px-1 border chip-img-sample" data-url="https://images.unsplash.com/photo-1592924357228-91a4daadcfea?w=500" data-cat="Vegetables" style="font-size:0.75rem;">🍅 Tomatoes</button>
-                            <button type="button" class="btn btn-light btn-sm py-0 px-1 border chip-img-sample" data-url="https://images.unsplash.com/photo-1560806887-1e4cd0b6cbd6?w=500" data-cat="Fruits" style="font-size:0.75rem;">🍎 Apples</button>
-                            <button type="button" class="btn btn-light btn-sm py-0 px-1 border chip-img-sample" data-url="https://images.unsplash.com/photo-1576045057995-568f588f82fb?w=500" data-cat="Vegetables" style="font-size:0.75rem;">🥬 Spinach</button>
-                            <button type="button" class="btn btn-light btn-sm py-0 px-1 border chip-img-sample" data-url="https://images.unsplash.com/photo-1598170845058-32b9d6a5c317?w=500" data-cat="Vegetables" style="font-size:0.75rem;">🥕 Carrots</button>
-                            <button type="button" class="btn btn-light btn-sm py-0 px-1 border chip-img-sample" data-url="https://images.unsplash.com/photo-1587049352846-4a222e784d38?w=500" data-cat="Other" style="font-size:0.75rem;">🍯 Honey</button>
-                            <button type="button" class="btn btn-light btn-sm py-0 px-1 border chip-img-sample" data-url="https://images.unsplash.com/photo-1582722872445-44dc5f7e3c8f?w=500" data-cat="Dairy" style="font-size:0.75rem;">🥚 Eggs</button>
+                            <button type="button" class="btn btn-light btn-sm py-0 px-1 border chip-img-sample" data-url="https://images.unsplash.com/photo-1592924357228-91a4daadcfea?w=500" data-cat="Vegetables" data-name="Organic Red Tomatoes" style="font-size:0.75rem;">🍅 Tomatoes</button>
+                            <button type="button" class="btn btn-light btn-sm py-0 px-1 border chip-img-sample" data-url="https://images.unsplash.com/photo-1550583724-b2692b85b150?w=500" data-cat="Dairy" data-name="Pure Farm Fresh Milk" style="font-size:0.75rem;">🥛 Milk</button>
+                            <button type="button" class="btn btn-light btn-sm py-0 px-1 border chip-img-sample" data-url="https://images.unsplash.com/photo-1560806887-1e4cd0b6cbd6?w=500" data-cat="Fruits" data-name="Crisp Apples" style="font-size:0.75rem;">🍎 Apples</button>
+                            <button type="button" class="btn btn-light btn-sm py-0 px-1 border chip-img-sample" data-url="https://images.unsplash.com/photo-1576045057995-568f588f82fb?w=500" data-cat="Vegetables" data-name="Fresh Baby Spinach" style="font-size:0.75rem;">🥬 Spinach</button>
+                            <button type="button" class="btn btn-light btn-sm py-0 px-1 border chip-img-sample" data-url="https://images.unsplash.com/photo-1598170845058-32b9d6a5c317?w=500" data-cat="Vegetables" data-name="Organic Carrots" style="font-size:0.75rem;">🥕 Carrots</button>
+                            <button type="button" class="btn btn-light btn-sm py-0 px-1 border chip-img-sample" data-url="https://images.unsplash.com/photo-1582722872445-44dc5f7e3c8f?w=500" data-cat="Dairy" data-name="Farm Fresh Eggs" style="font-size:0.75rem;">🥚 Eggs</button>
+                            <button type="button" class="btn btn-light btn-sm py-0 px-1 border chip-img-sample" data-url="https://images.unsplash.com/photo-1587049352846-4a222e784d38?w=500" data-cat="Other" data-name="Raw Wildflower Honey" style="font-size:0.75rem;">🍯 Honey</button>
                         </div>
                     </div>
 
@@ -164,7 +180,7 @@
                                 <span class="text-muted small">{{ item.description if item.description else 'Farm-fresh quality' }}</span>
                             </td>
                             <td>
-                                <span class="fw-bold text-success">${{ "%.2f"|format(item.price) }}</span>
+                                <span class="fw-bold text-success">₹{{ "%.2f"|format(item.price) }}</span>
                             </td>
                             <td>
                                 <span class="badge bg-light text-dark border">{{ item.unit }}</span>
@@ -217,11 +233,113 @@
 <script>
 (function() {
     'use strict';
+    const nameInput = document.getElementById('name');
+    const categorySelect = document.getElementById('category');
+    const unitInput = document.getElementById('unit');
+    const autoBadge = document.getElementById('unit-auto-badge');
     const imgInput = document.getElementById('image_url');
     const previewBox = document.getElementById('img-preview-box');
     const previewIcon = document.getElementById('img-preview-icon');
     const previewTag = document.getElementById('img-preview-tag');
-    const categorySelect = document.getElementById('category');
+    const unitChips = document.querySelectorAll('.chip-unit-select');
+
+    let userHasManuallyEditedUnit = false;
+
+    // Automatic unit inference rule engine
+    function inferUnit(name, category) {
+        const n = (name || '').toLowerCase().trim();
+        const c = (category || '').toLowerCase().trim();
+
+        // 1. Liquids / Dairy liquids -> per liter
+        if (/\b(milk|doodh|curd|dahi|yogurt|lassi|buttermilk|chaas|juice|oil|liquid|ghee|shake)\b/i.test(n)) {
+            return 'per liter';
+        }
+        // 2. Eggs -> per dozen
+        if (/\b(egg|eggs|anda|ande)\b/i.test(n)) {
+            return 'per dozen';
+        }
+        // 3. Leafy greens / herbs -> per bunch
+        if (/\b(spinach|palak|coriander|cilantro|dhaniya|methi|fenugreek|mint|pudina|kale|lettuce|bunch|parsley|basil|herbs?)\b/i.test(n)) {
+            return 'per bunch';
+        }
+        // 4. Whole pieces
+        if (/\b(coconut|watermelon|pumpkin|cabbage|cauliflower|pineapple|papaya|piece|kaddu)\b/i.test(n)) {
+            return 'per piece';
+        }
+        // 5. Honey / jam / jar products
+        if (/\b(honey|jam|pickle|achar|marmalade)\b/i.test(n)) {
+            return 'per 500g jar';
+        }
+        // 6. Common Vegetables / Fruits / Grains keywords
+        if (/\b(tomato|potato|onion|apple|banana|mango|carrot|rice|wheat|flour|atta|dal|grain|vegetable|fruit)\b/i.test(n)) {
+            return 'per kg';
+        }
+
+        // Category-based defaults
+        if (c === 'dairy') {
+            return 'per liter';
+        }
+        if (c === 'herbs') {
+            return 'per bunch';
+        }
+        if (c === 'vegetables' || c === 'fruits' || c === 'grains') {
+            return 'per kg';
+        }
+        return 'per kg';
+    }
+
+    function syncAutoUnit() {
+        if (userHasManuallyEditedUnit) return;
+        const inferred = inferUnit(nameInput.value, categorySelect.value);
+        unitInput.value = inferred;
+        if (autoBadge) {
+            autoBadge.innerHTML = '<i class="bi bi-magic me-1"></i>Auto: ' + inferred;
+            autoBadge.className = 'badge bg-success-subtle text-success border border-success-subtle py-1 px-2';
+        }
+        highlightActiveChip(inferred);
+    }
+
+    function highlightActiveChip(val) {
+        unitChips.forEach(chip => {
+            if (chip.dataset.unit === val) {
+                chip.classList.add('bg-success', 'text-white', 'border-success');
+                chip.classList.remove('btn-light');
+            } else {
+                chip.classList.remove('bg-success', 'text-white', 'border-success');
+                chip.classList.add('btn-light');
+            }
+        });
+    }
+
+    if (nameInput) {
+        nameInput.addEventListener('input', syncAutoUnit);
+    }
+    if (categorySelect) {
+        categorySelect.addEventListener('change', syncAutoUnit);
+    }
+
+    if (unitInput) {
+        unitInput.addEventListener('input', function() {
+            userHasManuallyEditedUnit = true;
+            if (autoBadge) {
+                autoBadge.innerHTML = '<i class="bi bi-pencil me-1"></i>Custom Unit';
+                autoBadge.className = 'badge bg-secondary-subtle text-secondary border py-1 px-2';
+            }
+            highlightActiveChip(unitInput.value);
+        });
+    }
+
+    unitChips.forEach(chip => {
+        chip.addEventListener('click', function() {
+            unitInput.value = this.dataset.unit;
+            userHasManuallyEditedUnit = false;
+            if (autoBadge) {
+                autoBadge.innerHTML = '<i class="bi bi-check2-circle me-1"></i>Selected: ' + this.dataset.unit;
+                autoBadge.className = 'badge bg-primary-subtle text-primary border border-primary-subtle py-1 px-2';
+            }
+            highlightActiveChip(this.dataset.unit);
+        });
+    });
 
     function updatePreview() {
         const url = imgInput.value.trim();
@@ -250,9 +368,19 @@
             if (btn.dataset.cat && categorySelect) {
                 categorySelect.value = btn.dataset.cat;
             }
+            if (btn.dataset.name && nameInput && (!nameInput.value.trim() || nameInput.value.startsWith('Organic') || nameInput.value.startsWith('Fresh') || nameInput.value.startsWith('Pure') || nameInput.value.startsWith('Crisp') || nameInput.value.startsWith('Farm') || nameInput.value.startsWith('Raw') || nameInput.value.startsWith('Country'))) {
+                nameInput.value = btn.dataset.name;
+            } else if (btn.dataset.name && nameInput && !nameInput.value.trim()) {
+                nameInput.value = btn.dataset.name;
+            }
+            userHasManuallyEditedUnit = false;
+            syncAutoUnit();
             updatePreview();
         });
     });
+
+    // Initial sync
+    syncAutoUnit();
 })();
 </script>
 {% endblock %}

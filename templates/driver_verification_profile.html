@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+
+{% block title %}Driver Verification Profile - FarmFetch{% endblock %}
+
+{% block content %}
+<div class="container py-4" style="max-width: 680px;">
+    <!-- Back to driver dashboard -->
+    <a href="{{ url_for('driver_dashboard') }}" class="btn btn-outline-secondary btn-sm rounded-pill px-3 mb-3">
+        <i class="bi bi-arrow-left me-1"></i> Back to Driver Dashboard
+    </a>
+
+    <div class="card border-0 shadow-sm rounded-4 p-4 p-md-5 bg-white">
+        <div class="text-center mb-4">
+            <span class="badge bg-primary-subtle text-primary p-3 rounded-circle fs-3 mb-2">
+                <i class="bi bi-truck-front"></i>
+            </span>
+            <h1 class="h3 fw-bold text-dark mb-1">Driver Verification Profile</h1>
+            <p class="text-muted small mb-0">Submit commercial driving credentials and vehicle specification for platform verification.</p>
+        </div>
+
+        <!-- Verification Status Alert -->
+        {% set dst = driver.driver_verification_status %}
+        {% if dst == 'APPROVED' %}
+            <div class="alert alert-success d-flex align-items-center gap-3 rounded-4 p-3 mb-4 border-0 shadow-xs">
+                <i class="bi bi-patch-check-fill fs-2 text-success"></i>
+                <div>
+                    <h2 class="h6 fw-bold text-success mb-1">Account Verified & Eligible</h2>
+                    <p class="mb-0 small text-dark">Your driver profile is fully verified. You are eligible to accept orders and receive delivery routing assignments.</p>
+                </div>
+            </div>
+        {% elif dst == 'PENDING' %}
+            <div class="alert alert-warning d-flex align-items-center gap-3 rounded-4 p-3 mb-4 border-0 shadow-xs">
+                <i class="bi bi-hourglass-split fs-2 text-warning"></i>
+                <div>
+                    <h2 class="h6 fw-bold text-dark mb-1">Verification Review In Progress</h2>
+                    <p class="mb-0 small text-dark">Your documents and vehicle profile have been submitted and are currently awaiting administrative review.</p>
+                </div>
+            </div>
+        {% elif dst == 'NEEDS_MORE_INFORMATION' %}
+            <div class="alert alert-info d-flex align-items-center gap-3 rounded-4 p-3 mb-4 border-0 shadow-xs">
+                <i class="bi bi-info-circle-fill fs-2 text-info"></i>
+                <div>
+                    <h2 class="h6 fw-bold text-dark mb-1">Action Required: More Information Needed</h2>
+                    <p class="mb-0 small text-dark">
+                        {{ driver.driver_verification_notes or 'Please provide updated vehicle specifications or verified license details below.' }}
+                    </p>
+                </div>
+            </div>
+        {% elif dst == 'REJECTED' %}
+            <div class="alert alert-danger d-flex align-items-center gap-3 rounded-4 p-3 mb-4 border-0 shadow-xs">
+                <i class="bi bi-x-circle-fill fs-2 text-danger"></i>
+                <div>
+                    <h2 class="h6 fw-bold text-danger mb-1">Verification Rejected</h2>
+                    <p class="mb-0 small text-dark">
+                        {{ driver.driver_verification_notes or 'Your driver credentials did not satisfy delivery fleet requirements. You may correct your information below and resubmit.' }}
+                    </p>
+                </div>
+            </div>
+        {% endif %}
+
+        <form method="POST" action="{{ url_for('driver_verification_profile') }}">
+            <div class="mb-3">
+                <label for="driver_license_number" class="form-label fw-semibold small text-dark">Commercial Driving License Number *</label>
+                <input type="text" name="driver_license_number" id="driver_license_number" class="form-control rounded-3 font-monospace" value="{{ driver.driver_license_number or '' }}" placeholder="e.g. DL-KA-05-2023-88192" required>
+                <small class="text-muted" style="font-size: 0.72rem;">License numbers are verified securely and never exposed to the public.</small>
+            </div>
+
+            <div class="mb-4">
+                <label for="driver_vehicle_type" class="form-label fw-semibold small text-dark">Vehicle Type & Cargo Capability *</label>
+                <select name="driver_vehicle_type" id="driver_vehicle_type" class="form-select rounded-3 py-2" required>
+                    {% set cur_v = driver.driver_vehicle_type or driver.vehicle_type or '' %}
+                    <option value="" disabled {% if not cur_v %}selected{% endif %}>Select vehicle type...</option>
+                    <option value="Refrigerated Van" {% if cur_v == 'Refrigerated Van' %}selected{% endif %}>Refrigerated Van (Insulated Produce Transport)</option>
+                    <option value="Standard Delivery Van" {% if cur_v == 'Standard Delivery Van' %}selected{% endif %}>Standard Delivery Van</option>
+                    <option value="Pickup Truck / Utility" {% if cur_v == 'Pickup Truck / Utility' %}selected{% endif %}>Pickup Truck / Utility</option>
+                    <option value="Electric Cargo Van" {% if cur_v == 'Electric Cargo Van' %}selected{% endif %}>Electric Cargo Van</option>
+                    <option value="Motorcycle with Insulated Box" {% if cur_v == 'Motorcycle with Insulated Box' %}selected{% endif %}>Motorcycle with Insulated Box</option>
+                </select>
+            </div>
+
+            <button type="submit" class="btn btn-success btn-lg w-100 rounded-pill py-3 fw-bold shadow-sm">
+                <i class="bi bi-cloud-arrow-up me-2"></i> 
+                {% if dst in ['REJECTED', 'NEEDS_MORE_INFORMATION'] %}
+                    Resubmit Credentials for Verification
+                {% else %}
+                    Save & Update Credentials
+                {% endif %}
+            </button>
+        </form>
+    </div>
+</div>
+{% endblock %}

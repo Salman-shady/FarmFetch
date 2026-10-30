@@ -40,7 +40,14 @@
     </div>
     <div>
       <p class="mb-0" style="font-size:.82rem;opacity:.8;text-transform:uppercase;letter-spacing:.05em;">Driver Operations</p>
-      <h3 class="mb-0">{{ current_user.email.split('@')[0] | title }}</h3>
+      <h3 class="mb-0">
+        {{ current_user.email.split('@')[0] | title }}
+        {% if current_user.driver_verification_status == 'APPROVED' %}
+            <span class="badge bg-success-subtle text-white border border-light px-2 py-1 rounded-pill" style="font-size: 0.72rem;">
+                <i class="bi bi-patch-check-fill text-warning me-1"></i>Verified Driver
+            </span>
+        {% endif %}
+      </h3>
       <p>Delivering fresh farm produce to local customers.</p>
     </div>
   </div>
@@ -62,6 +69,49 @@
   </div>
 </div>
 
+<!-- Driver Verification Status Alert Banner -->
+{% set d_status = current_user.driver_verification_status %}
+{% if d_status == 'PENDING' %}
+    <div class="alert alert-warning border-0 shadow-sm rounded-4 p-3 mb-4 d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <div class="d-flex align-items-center gap-3">
+            <i class="bi bi-hourglass-split fs-2 text-warning"></i>
+            <div>
+                <h6 class="fw-bold mb-1 text-dark">Driver Credentials Under Review</h6>
+                <p class="mb-0 small text-dark">Your driver documents (license & vehicle info) are currently pending administrative review. You will be able to accept deliveries once verified.</p>
+            </div>
+        </div>
+        <a href="{{ url_for('driver_verification_profile') }}" class="btn btn-sm btn-outline-dark rounded-pill px-3">
+            <i class="bi bi-file-earmark-person me-1"></i>Review Details
+        </a>
+    </div>
+{% elif d_status == 'NEEDS_MORE_INFORMATION' %}
+    <div class="alert alert-info border-0 shadow-sm rounded-4 p-3 mb-4 d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <div class="d-flex align-items-center gap-3">
+            <i class="bi bi-info-circle-fill fs-2 text-info"></i>
+            <div>
+                <h6 class="fw-bold mb-1 text-dark">Action Needed: Additional Driver Credentials Required</h6>
+                <p class="mb-0 small text-dark">{{ current_user.driver_verification_notes or 'Please provide updated driver license or vehicle information.' }}</p>
+            </div>
+        </div>
+        <a href="{{ url_for('driver_verification_profile') }}" class="btn btn-sm btn-info text-white rounded-pill px-3">
+            <i class="bi bi-pencil-square me-1"></i>Update & Resubmit
+        </a>
+    </div>
+{% elif d_status == 'REJECTED' %}
+    <div class="alert alert-danger border-0 shadow-sm rounded-4 p-3 mb-4 d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <div class="d-flex align-items-center gap-3">
+            <i class="bi bi-x-circle-fill fs-2 text-danger"></i>
+            <div>
+                <h6 class="fw-bold mb-1 text-danger">Driver Verification Rejected</h6>
+                <p class="mb-0 small text-dark">{{ current_user.driver_verification_notes or 'Your driver application was declined by the administrator. Contact support or resubmit updated credentials.' }}</p>
+            </div>
+        </div>
+        <a href="{{ url_for('driver_verification_profile') }}" class="btn btn-sm btn-danger rounded-pill px-3">
+            <i class="bi bi-arrow-repeat me-1"></i>Resubmit Credentials
+        </a>
+    </div>
+{% endif %}
+
 <div class="row g-4">
   <div class="col-lg-3">
     <div class="dash-sidebar">
@@ -73,6 +123,12 @@
             <div class="fw-bold text-dark" style="font-size:.9rem;">{{ current_user.email.split('@')[0] | title }}</div>
             <span class="badge rounded-pill" style="background:#dbeafe;color:#1d4ed8;font-size:.72rem;">Delivery Driver</span>
           </div>
+        </div>
+        
+        <div class="mb-2">
+          <a href="{{ url_for('driver_verification_profile') }}" class="btn btn-sm btn-outline-primary w-100 rounded-pill py-1" style="font-size: 0.8rem;">
+            <i class="bi bi-shield-check me-1"></i>Credentials & Verification
+          </a>
         </div>
 
         <!-- Driver Availability Management -->
@@ -171,8 +227,12 @@
       </div>
       <div class="col-sm-6 col-md-3">
         <div class="stat-card" id="stat-earnings-card">
-          <div class="stat-icon amber"><i class="bi bi-cash-stack"></i></div>
-          <div><div class="stat-value" id="stat-earnings">—</div><div class="stat-label">Est. Earnings</div></div>
+          <div class="stat-icon amber"><i class="bi bi-currency-rupee"></i></div>
+          <div>
+            <div class="stat-value" id="stat-earnings">₹{{ "%.2f"|format(total_driver_earnings) }}</div>
+            <div class="stat-label">Finalized Earnings</div>
+            <span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill" style="font-size:0.68rem;">₹{{ "%.2f"|format(rate_per_km) }}/km Rate</span>
+          </div>
         </div>
       </div>
     </div>
@@ -185,6 +245,7 @@
       {% if in_progress_orders %}
       <div class="d-flex flex-column gap-3">
         {% for order in in_progress_orders %}
+        {% set earn = order.driver_earnings %}
         <div class="delivery-card in-progress">
           <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-3">
             <div>
@@ -225,12 +286,74 @@
               </div>
             </div>
           </div>
-          <div class="d-flex justify-content-between align-items-center mt-3">
+
+          <!-- Driver Earnings & Distance Breakdown (Pickup & Drop) -->
+          <div class="p-3 my-3 rounded-4" style="background: linear-gradient(135deg, #f0fdf4 0%, #eff6ff 100%); border: 1px solid #bbf7d0;">
+            <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-1">
+              <span class="small text-uppercase fw-bold text-dark" style="letter-spacing:0.04em;">
+                <i class="bi bi-wallet2 text-success me-1"></i> Driver Earnings Breakdown
+              </span>
+              {% if earn.is_finalized %}
+                <span class="badge bg-success text-white rounded-pill px-2 py-1 small">
+                  <i class="bi bi-check-circle-fill me-1"></i>Finalized Server Payout
+                </span>
+              {% else %}
+                <span class="badge bg-warning-subtle text-dark border border-warning-subtle rounded-pill px-2 py-1 small">
+                  <i class="bi bi-clock-history me-1"></i>Estimated (Finalizes on Delivery)
+                </span>
+              {% endif %}
+            </div>
+
+            <div class="row g-2 mb-2">
+              <!-- Pickup Leg -->
+              <div class="col-sm-6">
+                <div class="p-2 bg-white rounded-3 border h-100">
+                  <div class="d-flex justify-content-between align-items-center mb-1">
+                    <span class="small text-muted fw-semibold"><i class="bi bi-geo-alt-fill text-success me-1"></i>Pickup Journey</span>
+                    <span class="badge bg-light text-dark border" style="font-size:0.68rem;">{{ earn.pickup_source_label }}</span>
+                  </div>
+                  <div class="d-flex justify-content-between align-items-baseline">
+                    <span class="text-dark small">{{ earn.pickup_distance_km }} km &times; ₹{{ "%.2f"|format(earn.rate_per_km) }}</span>
+                    <span class="fw-bold text-success fs-6">₹{{ "%.2f"|format(earn.pickup_earning) }}</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Drop Leg -->
+              <div class="col-sm-6">
+                <div class="p-2 bg-white rounded-3 border h-100">
+                  <div class="d-flex justify-content-between align-items-center mb-1">
+                    <span class="small text-muted fw-semibold"><i class="bi bi-pin-map-fill text-danger me-1"></i>Delivery Journey</span>
+                    <span class="badge bg-light text-dark border" style="font-size:0.68rem;">{{ earn.drop_source_label }}</span>
+                  </div>
+                  <div class="d-flex justify-content-between align-items-baseline">
+                    <span class="text-dark small">{{ earn.drop_distance_km }} km &times; ₹{{ "%.2f"|format(earn.rate_per_km) }}</span>
+                    <span class="fw-bold text-success fs-6">₹{{ "%.2f"|format(earn.drop_earning) }}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Total Driver Earning -->
+            <div class="d-flex justify-content-between align-items-center p-2 bg-white rounded-3 border flex-wrap gap-2">
+              <div>
+                <span class="small text-muted">Total Payable Distance:</span>
+                <strong class="text-dark ms-1">{{ earn.total_distance_km }} km</strong>
+                <span class="text-muted small ms-1">({{ earn.pickup_distance_km }} km pickup + {{ earn.drop_distance_km }} km drop)</span>
+              </div>
+              <div class="text-end">
+                <span class="small text-muted me-1">Total Driver Earning:</span>
+                <span class="fs-5 fw-bold text-success">₹{{ "%.2f"|format(earn.total_earning) }}</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="d-flex justify-content-between align-items-center mt-2">
             <div class="text-muted small">
               <i class="bi bi-telephone me-1"></i>
               <a href="tel:{{ order.customer_phone }}" class="text-decoration-none">{{ order.customer_phone }}</a>
             </div>
-            <span class="fw-bold text-success">${{ "%.2f"|format(order.total_price) }}</span>
+            <span class="fw-bold text-muted small">Order Value: ₹{{ "%.2f"|format(order.total_price) }}</span>
           </div>
 
           <div class="mt-3 pt-2 border-top">
@@ -239,7 +362,7 @@
               <input type="text" name="delivery_otp" placeholder="Enter 6-digit Customer OTP" 
                      class="form-control" maxlength="6" pattern="\d{6}" required autocomplete="off">
               <button type="submit" class="btn btn-success fw-bold text-nowrap">
-                <i class="bi bi-check2-circle me-1"></i> Confirm Delivery
+                <i class="bi bi-check2-circle me-1"></i> Confirm Delivery & Finalize Payout
               </button>
             </form>
             {% else %}
@@ -267,6 +390,7 @@
       {% if available_orders %}
       <div class="d-flex flex-column gap-3">
         {% for order in available_orders %}
+        {% set earn = order.driver_earnings %}
         <div class="delivery-card available">
           <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-3">
             <div>
@@ -276,7 +400,11 @@
               <div class="text-muted" style="font-size:.77rem;margin-top:.25rem;"><i class="bi bi-clock me-1"></i>{{ order.created_at.strftime('%b %d, %I:%M %p') }}</div>
               {% endif %}
             </div>
-            <span class="fw-bold text-success fs-5">${{ "%.2f"|format(order.total_price) }}</span>
+            <div class="text-end">
+              <span class="badge bg-success-subtle text-success border border-success-subtle px-2 py-1 rounded-pill small">
+                Est. Payout: <strong class="fs-6">₹{{ "%.2f"|format(earn.total_earning) }}</strong>
+              </span>
+            </div>
           </div>
           <div class="row g-2 mb-3">
             <div class="col-md-6">
@@ -294,8 +422,27 @@
               </div>
             </div>
           </div>
+
+          <!-- Driver Earning Breakdown for Available Order -->
+          <div class="p-2 mb-3 rounded-3" style="background:#f8fafc; border:1px solid #e2e8f0;">
+            <div class="d-flex justify-content-between align-items-center flex-wrap gap-1 mb-1">
+              <span class="small fw-bold text-dark">
+                <i class="bi bi-wallet2 text-success me-1"></i>Estimated Driver Compensation (@ ₹{{ "%.2f"|format(earn.rate_per_km) }}/km):
+              </span>
+              <span class="fs-6 fw-bold text-success">₹{{ "%.2f"|format(earn.total_earning) }}</span>
+            </div>
+            <div class="d-flex justify-content-between align-items-center text-muted small flex-wrap gap-1" style="font-size:0.75rem;">
+              <span>Pickup: <strong>{{ earn.pickup_distance_km }} km</strong> (₹{{ "%.2f"|format(earn.pickup_earning) }})</span>
+              <span>&bull;</span>
+              <span>Drop: <strong>{{ earn.drop_distance_km }} km</strong> (₹{{ "%.2f"|format(earn.drop_earning) }})</span>
+              <span>&bull;</span>
+              <span>Total: <strong>{{ earn.total_distance_km }} km</strong></span>
+              <span class="badge bg-light text-secondary border ms-auto" style="font-size:0.68rem;">{{ earn.drop_source_label }}</span>
+            </div>
+          </div>
+
           <div class="d-flex justify-content-between align-items-center">
-            <div class="text-muted small">{{ order.items|length }} item{{ 's' if order.items|length != 1 else '' }} in this order</div>
+            <div class="text-muted small">{{ order.items|length }} item{{ 's' if order.items|length != 1 else '' }} &bull; Order ₹{{ "%.2f"|format(order.total_price) }}</div>
             <form action="{{ url_for('driver_accept_order', order_id=order.id) }}" method="POST">
               <button type="submit" class="btn btn-success">
                 <i class="bi bi-check2-circle me-1"></i> Accept Delivery
@@ -316,14 +463,71 @@
 
     <div id="sect-history" class="dashboard-card mb-4">
       <div class="section-hdr">
-        <h5><i class="bi bi-clock-history"></i> Delivery History</h5>
-        <span class="badge bg-light text-dark border" id="history-count">Loading...</span>
+        <h5><i class="bi bi-clock-history"></i> Delivery History & Finalized Payouts</h5>
+        <span class="badge bg-light text-dark border" id="history-count">{{ completed_orders|length }} completed</span>
       </div>
       <div id="history-list">
-        <div class="text-center py-4">
-          <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
-          <p class="text-muted small mt-2">Loading delivery history...</p>
+        {% if completed_orders %}
+        <div class="d-flex flex-column gap-3">
+          {% for order in completed_orders %}
+          {% set earn = order.driver_earnings %}
+          <div class="p-3 bg-white rounded-3 border shadow-xs">
+            <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-2">
+              <div>
+                <span class="fw-bold text-dark fs-6">Order #{{ order.id }}</span>
+                <span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill ms-2" style="font-size:0.72rem;">
+                  <i class="bi bi-check-circle-fill me-1"></i>Finalized Server Payout
+                </span>
+                <div class="text-muted small mt-1">
+                  <i class="bi bi-calendar-check me-1"></i>
+                  {{ order.delivered_at.strftime('%b %d, %I:%M %p') if (order.delivered_at and order.delivered_at.strftime) else 'Delivered' }}
+                </div>
+              </div>
+              <div class="text-end">
+                <span class="small text-muted d-block" style="font-size:0.75rem;">Total Finalized Payout:</span>
+                <span class="fs-5 fw-bold text-success">₹{{ "%.2f"|format(earn.total_earning) }}</span>
+                <small class="text-muted d-block" style="font-size:0.7rem;">@ ₹{{ "%.2f"|format(earn.rate_per_km) }}/km</small>
+              </div>
+            </div>
+
+            <!-- Breakdown: Pickup & Drop Journeys -->
+            <div class="row g-2 p-2 rounded-3 bg-light border mb-2">
+              <div class="col-sm-6">
+                <div class="small">
+                  <span class="text-muted fw-semibold"><i class="bi bi-geo-alt text-success me-1"></i>Pickup Leg:</span>
+                  <span class="text-dark fw-bold">{{ earn.pickup_distance_km }} km</span>
+                  <span class="badge bg-white text-secondary border ms-1" style="font-size:0.65rem;">{{ earn.pickup_source_label }}</span>
+                  <div class="text-success fw-semibold mt-1">
+                    {{ earn.pickup_distance_km }} km &times; ₹{{ "%.2f"|format(earn.rate_per_km) }} = <strong>₹{{ "%.2f"|format(earn.pickup_earning) }}</strong>
+                  </div>
+                </div>
+              </div>
+              <div class="col-sm-6">
+                <div class="small">
+                  <span class="text-muted fw-semibold"><i class="bi bi-pin-map text-danger me-1"></i>Drop Leg:</span>
+                  <span class="text-dark fw-bold">{{ earn.drop_distance_km }} km</span>
+                  <span class="badge bg-white text-secondary border ms-1" style="font-size:0.65rem;">{{ earn.drop_source_label }}</span>
+                  <div class="text-success fw-semibold mt-1">
+                    {{ earn.drop_distance_km }} km &times; ₹{{ "%.2f"|format(earn.rate_per_km) }} = <strong>₹{{ "%.2f"|format(earn.drop_earning) }}</strong>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="d-flex justify-content-between align-items-center text-muted small" style="font-size:0.78rem;">
+              <span>From: <strong>{{ order.farm.name if order.farm else 'Farm' }}</strong> &bull; To: <strong>{{ order.customer_name }}</strong></span>
+              <span>Payable Distance: <strong>{{ earn.total_distance_km }} km</strong></span>
+            </div>
+          </div>
+          {% endfor %}
         </div>
+        {% else %}
+        <div class="text-center py-5">
+          <div class="empty-state-icon"><i class="bi bi-truck"></i></div>
+          <h5 class="empty-state-title">No completed deliveries yet</h5>
+          <p class="empty-state-desc">Accept an available order to start your delivery history. Your earnings (₹3/km for both pickup and drop) will be finalized here once delivered.</p>
+        </div>
+        {% endif %}
       </div>
     </div>
 
@@ -382,18 +586,15 @@
         var earnEl = document.getElementById('stat-earnings');
         var sideEl = document.getElementById('sidebar-delivered');
         if (dlEl) dlEl.textContent = data.total_delivered;
-        if (earnEl) earnEl.textContent = '$' + Number(data.total_earnings).toFixed(0);
+        if (earnEl) earnEl.textContent = '₹' + Number(data.total_earnings).toFixed(2);
         if (sideEl) sideEl.textContent = data.total_delivered;
 
-        // Render delivery history (from stat data)
-        renderHistory(data.total_delivered, data.total_earnings);
+        if (data.completed_orders && data.completed_orders.length > 0) {
+          renderDynamicHistory(data.completed_orders, data.total_earnings, data.rate_per_km);
+        }
       })
       .catch(function() {
-        var dlEl = document.getElementById('stat-total-delivered');
-        var earnEl = document.getElementById('stat-earnings');
-        if (dlEl) dlEl.textContent = '0';
-        if (earnEl) earnEl.textContent = '$0';
-        renderHistory(0, 0);
+        console.warn('Driver stats endpoint unavailable, relying on server rendered values.');
       });
 
     // GPS check
@@ -412,30 +613,56 @@
     }
   }
 
-  function renderHistory(totalDelivered, totalEarnings) {
+  function renderDynamicHistory(orders, totalEarnings, ratePerKm) {
     var historyList = document.getElementById('history-list');
     var historyCount = document.getElementById('history-count');
-    if (!historyList) return;
+    if (!historyList || !orders) return;
 
-    if (historyCount) historyCount.textContent = totalDelivered + ' completed';
+    if (historyCount) historyCount.textContent = orders.length + ' completed';
 
-    if (!totalDelivered || totalDelivered === 0) {
-      historyList.innerHTML = '<div class="text-center py-5"><div class="empty-state-icon"><i class="bi bi-truck"></i></div><h5 class="empty-state-title">No completed deliveries yet</h5><p class="empty-state-desc">Accept an available order to start your delivery history. Your earnings will appear here once you complete deliveries.</p></div>';
-      return;
-    }
-
-    var earningsHtml = totalEarnings > 0
-      ? '<div class="d-flex justify-content-between p-3 rounded-3 mb-3" style="background:linear-gradient(90deg,#d1fae5,#f0fdf4);border:1px solid #6ee7b7;">' +
-        '<div><div class="fw-bold text-dark">Total Completed Deliveries</div><div class="text-muted small">All time</div></div>' +
-        '<div class="text-end"><div class="fw-bold text-success fs-5">' + totalDelivered + '</div><div class="text-muted small">deliveries</div></div>' +
+    var html = '<div class="d-flex flex-column gap-3">';
+    orders.forEach(function(o) {
+      html += '<div class="p-3 bg-white rounded-3 border shadow-xs">' +
+        '<div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-2">' +
+          '<div>' +
+            '<span class="fw-bold text-dark fs-6">Order #' + o.order_id + '</span>' +
+            '<span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill ms-2" style="font-size:0.72rem;">' +
+              '<i class="bi bi-check-circle-fill me-1"></i>Finalized Server Payout' +
+            '</span>' +
+            '<div class="text-muted small mt-1"><i class="bi bi-calendar-check me-1"></i>' + o.delivered_at + '</div>' +
+          '</div>' +
+          '<div class="text-end">' +
+            '<span class="small text-muted d-block" style="font-size:0.75rem;">Total Finalized Payout:</span>' +
+            '<span class="fs-5 fw-bold text-success">₹' + Number(o.total_earning).toFixed(2) + '</span>' +
+            '<small class="text-muted d-block" style="font-size:0.7rem;">@ ₹' + Number(o.rate_per_km || ratePerKm).toFixed(2) + '/km</small>' +
+          '</div>' +
         '</div>' +
-        '<div class="d-flex justify-content-between p-3 rounded-3" style="background:linear-gradient(90deg,#fef3c7,#fffbeb);border:1px solid #fcd34d;">' +
-        '<div><div class="fw-bold text-dark">Estimated Earnings</div><div class="text-muted small">10% of order value</div></div>' +
-        '<div class="text-end"><div class="fw-bold text-warning fs-5">$' + Number(totalEarnings).toFixed(2) + '</div><div class="text-muted small">earned</div></div>' +
-        '</div>'
-      : '<div class="text-center py-3 text-muted small">Earnings will be calculated as 10% of each completed order value.</div>';
-
-    historyList.innerHTML = earningsHtml;
+        '<div class="row g-2 p-2 rounded-3 bg-light border mb-2">' +
+          '<div class="col-sm-6">' +
+            '<div class="small">' +
+              '<span class="text-muted fw-semibold"><i class="bi bi-geo-alt text-success me-1"></i>Pickup Leg:</span> ' +
+              '<span class="text-dark fw-bold">' + o.pickup_distance_km + ' km</span> ' +
+              '<span class="badge bg-white text-secondary border ms-1" style="font-size:0.65rem;">' + o.pickup_source_label + '</span>' +
+              '<div class="text-success fw-semibold mt-1">' + o.pickup_distance_km + ' km &times; ₹' + Number(o.rate_per_km || ratePerKm).toFixed(2) + ' = <strong>₹' + Number(o.pickup_earning).toFixed(2) + '</strong></div>' +
+            '</div>' +
+          '</div>' +
+          '<div class="col-sm-6">' +
+            '<div class="small">' +
+              '<span class="text-muted fw-semibold"><i class="bi bi-pin-map text-danger me-1"></i>Drop Leg:</span> ' +
+              '<span class="text-dark fw-bold">' + o.drop_distance_km + ' km</span> ' +
+              '<span class="badge bg-white text-secondary border ms-1" style="font-size:0.65rem;">' + o.drop_source_label + '</span>' +
+              '<div class="text-success fw-semibold mt-1">' + o.drop_distance_km + ' km &times; ₹' + Number(o.rate_per_km || ratePerKm).toFixed(2) + ' = <strong>₹' + Number(o.drop_earning).toFixed(2) + '</strong></div>' +
+            '</div>' +
+          '</div>' +
+        '</div>' +
+        '<div class="d-flex justify-content-between align-items-center text-muted small" style="font-size:0.78rem;">' +
+          '<span>From: <strong>' + o.farm_name + '</strong> &bull; To: <strong>' + o.customer_name + '</strong></span>' +
+          '<span>Payable Distance: <strong>' + o.total_distance_km + ' km</strong></span>' +
+        '</div>' +
+      '</div>';
+    });
+    html += '</div>';
+    historyList.innerHTML = html;
   }
 
   if (document.readyState === 'loading') {

@@ -1,0 +1,124 @@
+{% extends "base.html" %}
+
+{% block title %}Rate & Review Order #{{ order.id }} - FarmFetch{% endblock %}
+
+{% block content %}
+<div class="container py-4" style="max-width: 760px;">
+    <!-- Back to order button -->
+    <a href="{{ url_for('order_details', order_id=order.id) }}" class="btn btn-outline-secondary btn-sm rounded-pill px-3 mb-3">
+        <i class="bi bi-arrow-left me-1"></i> Back to Order Details
+    </a>
+
+    <div class="card border-0 shadow-sm rounded-4 p-4 p-md-5 bg-white">
+        <div class="text-center mb-4">
+            <span class="badge bg-success-subtle text-success p-3 rounded-circle fs-3 mb-2">
+                <i class="bi bi-star-fill text-warning"></i>
+            </span>
+            <h1 class="h3 fw-bold text-dark mb-1">Rate Your Farm & Delivery Experience</h1>
+            <p class="text-muted small mb-0">Order #{{ order.id }} &bull; Completed on {{ order.delivered_at.strftime('%b %d, %Y') if order.delivered_at and order.delivered_at.strftime else 'Recently' }}</p>
+        </div>
+
+        <form method="POST" action="{{ url_for('submit_order_review', order_id=order.id) }}">
+            <!-- Farm Review Section -->
+            <div class="p-4 rounded-4 bg-light mb-4 border">
+                <div class="d-flex align-items-center gap-3 mb-3">
+                    <span class="farm-avatar" style="width: 44px; height: 44px; font-size: 1.2rem; background: #d8f3dc; color: #166534;">
+                        <i class="bi bi-tree"></i>
+                    </span>
+                    <div>
+                        <h2 class="h5 fw-bold text-dark mb-0">{{ order.farm.name if order.farm else 'Origin Farm' }}</h2>
+                        <small class="text-muted">Produce Freshness & Quality Rating</small>
+                    </div>
+                </div>
+
+                {% if existing_farm_rev %}
+                    <div class="alert alert-success d-flex align-items-center gap-2 mb-0 rounded-3">
+                        <i class="bi bi-check-circle-fill fs-5"></i>
+                        <div>
+                            <strong>Farm Review Submitted:</strong> Rated {{ existing_farm_rev.rating }} / 5 stars.
+                            {% if existing_farm_rev.comment %}
+                                <div class="small fst-italic">"{{ existing_farm_rev.comment }}"</div>
+                            {% endif %}
+                        </div>
+                    </div>
+                {% else %}
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold small text-dark">Your Rating (1 to 5 Stars) *</label>
+                        <div class="d-flex gap-3 align-items-center flex-wrap">
+                            {% for r in range(5, 0, -1) %}
+                                <div class="form-check form-check-inline p-2 border rounded-3 bg-white px-3">
+                                    <input class="form-check-input" type="radio" name="farm_rating" id="fr_{{ r }}" value="{{ r }}" {% if r == 5 %}checked{% endif %} required>
+                                    <label class="form-check-label fw-bold text-dark" for="fr_{{ r }}">
+                                        {{ r }} <i class="bi bi-star-fill text-warning"></i>
+                                    </label>
+                                </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+
+                    <div class="mb-0">
+                        <label class="form-label fw-semibold small text-dark">Comments on Freshness & Quality (Optional)</label>
+                        <textarea name="farm_comment" class="form-control rounded-3" rows="3" placeholder="Share your experience with the vegetables, fruit freshness, packaging..."></textarea>
+                    </div>
+                {% endif %}
+            </div>
+
+            <!-- Driver Review Section -->
+            {% if order.driver_id %}
+                <div class="p-4 rounded-4 bg-light mb-4 border">
+                    <div class="d-flex align-items-center gap-3 mb-3">
+                        <span class="farm-avatar" style="width: 44px; height: 44px; font-size: 1.2rem; background: #e0f2fe; color: #0369a1;">
+                            <i class="bi bi-truck"></i>
+                        </span>
+                        <div>
+                            <h2 class="h5 fw-bold text-dark mb-0">{{ order.driver.email.split('@')[0].capitalize() if order.driver else 'Delivery Driver' }}</h2>
+                            <small class="text-muted">Delivery Speed, Handling & Professionalism</small>
+                        </div>
+                    </div>
+
+                    {% if existing_driver_rev %}
+                        <div class="alert alert-info d-flex align-items-center gap-2 mb-0 rounded-3">
+                            <i class="bi bi-check-circle-fill fs-5"></i>
+                            <div>
+                                <strong>Driver Review Submitted:</strong> Rated {{ existing_driver_rev.rating }} / 5 stars.
+                                {% if existing_driver_rev.comment %}
+                                    <div class="small fst-italic">"{{ existing_driver_rev.comment }}"</div>
+                                {% endif %}
+                            </div>
+                        </div>
+                    {% else %}
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold small text-dark">Your Rating (1 to 5 Stars)</label>
+                            <div class="d-flex gap-3 align-items-center flex-wrap">
+                                {% for r in range(5, 0, -1) %}
+                                    <div class="form-check form-check-inline p-2 border rounded-3 bg-white px-3">
+                                        <input class="form-check-input" type="radio" name="driver_rating" id="dr_{{ r }}" value="{{ r }}" {% if r == 5 %}checked{% endif %}>
+                                        <label class="form-check-label fw-bold text-dark" for="dr_{{ r }}">
+                                            {{ r }} <i class="bi bi-star-fill text-warning"></i>
+                                        </label>
+                                    </div>
+                                {% endfor %}
+                            </div>
+                        </div>
+
+                        <div class="mb-0">
+                            <label class="form-label fw-semibold small text-dark">Comments on Delivery Experience (Optional)</label>
+                            <textarea name="driver_comment" class="form-control rounded-3" rows="3" placeholder="Share your experience with delivery timeliness, driver communication, handling..."></textarea>
+                        </div>
+                    {% endif %}
+                </div>
+            {% endif %}
+
+            {% if not existing_farm_rev or (order.driver_id and not existing_driver_rev) %}
+                <button type="submit" class="btn btn-success btn-lg w-100 rounded-pill py-3 fw-bold shadow-sm">
+                    <i class="bi bi-send me-2"></i> Submit Verified Review
+                </button>
+            {% else %}
+                <a href="{{ url_for('order_details', order_id=order.id) }}" class="btn btn-outline-secondary w-100 rounded-pill py-2">
+                    Return to Order
+                </a>
+            {% endif %}
+        </form>
+    </div>
+</div>
+{% endblock %}

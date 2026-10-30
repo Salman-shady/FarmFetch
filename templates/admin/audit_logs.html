@@ -1,0 +1,125 @@
+{% extends "admin/layout.html" %}
+
+{% block admin_content %}
+<div class="d-flex flex-wrap justify-content-between align-items-center mb-4 gap-3">
+    <div>
+        <h2 class="h3 fw-bold text-dark mb-1">Security Audit Trail</h2>
+        <p class="text-muted small mb-0">Immutable chronological record of administrative interventions, verification decisions, and role actions.</p>
+    </div>
+    <span class="badge bg-secondary-subtle text-secondary px-3 py-2 rounded-pill font-monospace">
+        <i class="bi bi-shield-lock me-1"></i>Tamper-Evident Trail
+    </span>
+</div>
+
+<!-- Filters -->
+<div class="card border-0 shadow-sm rounded-4 p-3 bg-white mb-4">
+    <form method="GET" action="{{ url_for('admin_audit_logs') }}" class="row g-3 align-items-center">
+        <!-- Target Type Filter -->
+        <div class="col-md-4">
+            <label class="form-label text-muted small mb-1 fw-semibold">Target Entity Type</label>
+            <select name="target_type" class="form-select form-select-sm rounded-pill" onchange="this.form.submit()">
+                <option value="ALL" {% if target_filter == 'all' %}selected{% endif %}>All Entity Types</option>
+                <option value="user" {% if target_filter == 'user' %}selected{% endif %}>User Accounts</option>
+                <option value="farm" {% if target_filter == 'farm' %}selected{% endif %}>Farm Profiles</option>
+                <option value="complaint" {% if target_filter == 'complaint' %}selected{% endif %}>Complaints & Disputes</option>
+                <option value="review" {% if target_filter == 'review' %}selected{% endif %}>Reviews & Ratings</option>
+                <option value="system" {% if target_filter == 'system' %}selected{% endif %}>System & Auth</option>
+            </select>
+        </div>
+
+        <!-- Action Filter -->
+        <div class="col-md-5">
+            <label class="form-label text-muted small mb-1 fw-semibold">Action Pattern Filter</label>
+            <input type="text" name="action" value="{{ action_filter if action_filter != 'ALL' else '' }}" class="form-control form-control-sm rounded-pill ps-3" placeholder="e.g. SUSPENDED, VERIFICATION, LOGIN...">
+        </div>
+
+        <div class="col-md-3 d-flex align-items-end">
+            <button type="submit" class="btn btn-sm btn-success rounded-pill w-100 py-1">
+                <i class="bi bi-filter me-1"></i> Apply Filters
+            </button>
+        </div>
+    </form>
+</div>
+
+<!-- Audit Trail Table -->
+<div class="card border-0 shadow-sm rounded-4 overflow-hidden bg-white mb-4">
+    {% if pagination.items %}
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0 font-monospace" style="font-size: 0.82rem;">
+                <thead class="table-light text-muted small text-uppercase">
+                    <tr>
+                        <th class="ps-4">Timestamp</th>
+                        <th>Actor</th>
+                        <th>Action</th>
+                        <th>Target</th>
+                        <th>Details Payload</th>
+                        <th class="text-end pe-4">IP Address</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for log in pagination.items %}
+                        <tr>
+                            <td class="ps-4 text-nowrap text-dark">
+                                {{ log.timestamp_display or (log.timestamp.strftime('%b %d, %Y %I:%M %p') if log.timestamp and log.timestamp.strftime else 'Recently') }}
+                            </td>
+                            <td>
+                                <span class="fw-bold text-dark">{{ log.actor_email }}</span>
+                                <span class="badge bg-light text-secondary border ms-1" style="font-size: 0.65rem;">{{ log.actor_role }}</span>
+                            </td>
+                            <td>
+                                {% if 'SUSPEND' in log.action %}
+                                    <span class="badge bg-danger text-white">{{ log.action }}</span>
+                                {% elif 'APPROVED' in log.action or 'REACTIVATED' in log.action %}
+                                    <span class="badge bg-success text-white">{{ log.action }}</span>
+                                {% elif 'REJECT' in log.action %}
+                                    <span class="badge bg-danger-subtle text-danger border border-danger-subtle">{{ log.action }}</span>
+                                {% elif 'LOGIN' in log.action %}
+                                    <span class="badge bg-info-subtle text-info border border-info-subtle">{{ log.action }}</span>
+                                {% else %}
+                                    <span class="badge bg-secondary-subtle text-dark">{{ log.action }}</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <span class="badge bg-light text-dark border">
+                                    {{ log.target_type }}: #{{ log.target_id }}
+                                </span>
+                            </td>
+                            <td>
+                                <div class="text-truncate text-muted" style="max-width: 320px;" title="{{ log.details }}">
+                                    {{ log.details }}
+                                </div>
+                            </td>
+                            <td class="text-end pe-4 text-muted small">
+                                {{ log.ip_address or '127.0.0.1' }}
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Pagination Controls -->
+        {% if pagination.total_pages > 1 %}
+            <div class="p-3 border-top d-flex justify-content-between align-items-center font-sans-serif">
+                <small class="text-muted">
+                    Showing page {{ pagination.page }} of {{ pagination.total_pages }} ({{ pagination.total_count }} log entries)
+                </small>
+                <div class="btn-group btn-group-sm">
+                    {% if pagination.has_prev %}
+                        <a href="{{ url_for('admin_audit_logs', action=action_filter, target_type=target_filter, page=pagination.prev_page) }}" class="btn btn-outline-secondary">Previous</a>
+                    {% endif %}
+                    {% if pagination.has_next %}
+                        <a href="{{ url_for('admin_audit_logs', action=action_filter, target_type=target_filter, page=pagination.next_page) }}" class="btn btn-outline-secondary">Next</a>
+                    {% endif %}
+                </div>
+            </div>
+        {% endif %}
+    {% else %}
+        <div class="text-center py-5 text-muted">
+            <i class="bi bi-journal-text fs-1 text-secondary d-block mb-2"></i>
+            <h5 class="fw-bold text-dark">No audit records found</h5>
+            <p class="small mb-0">No entries match the specified action or target filters.</p>
+        </div>
+    {% endif %}
+</div>
+{% endblock %}

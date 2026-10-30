@@ -9,14 +9,30 @@ from app import app, db, User, Farm, ProduceItem, Order, OrderItem, mongo_db
 def seed():
     with app.app_context():
         print("Clearing existing data in MongoDB...")
-        for col in ['users', 'farms', 'produce_items', 'orders', 'order_items', 'counters']:
+        for col in ['users', 'farms', 'produce_items', 'orders', 'order_items', 'counters', 'reviews', 'complaints', 'audit_logs']:
             mongo_db[col].delete_many({})
 
         db.create_all()
 
         print("Creating demo accounts...")
+        # 0. Administrator account
+        admin = User(
+            email='admin@farm.com',
+            role='admin',
+            name='System Administrator',
+            is_suspended=False
+        )
+        admin.set_password('password123')
+        db.session.add(admin)
+        db.session.commit()
+
         # 1. Farmer account
-        farmer = User(email='farmer@farm.com', role='farmer')
+        farmer = User(
+            email='farmer@farm.com',
+            role='farmer',
+            name='John Farmer',
+            is_suspended=False
+        )
         farmer.set_password('password123')
         db.session.add(farmer)
         db.session.commit()
@@ -28,7 +44,10 @@ def seed():
             farm_type='Organic Fruits & Vegetables',
             user_id=farmer.id,
             latitude=12.9716,
-            longitude=77.5946
+            longitude=77.5946,
+            verification_status='APPROVED',
+            license_number='AGR-KA-2024-8841',
+            verified_by='admin@farm.com'
         )
         db.session.add(farm)
         db.session.commit()
@@ -46,12 +65,26 @@ def seed():
         db.session.commit()
 
         # 4. Customer account
-        customer = User(email='customer@farm.com', role='customer')
+        customer = User(
+            email='customer@farm.com',
+            role='customer',
+            name='Sarah Customer',
+            is_suspended=False
+        )
         customer.set_password('password123')
         db.session.add(customer)
 
         # 5. Delivery Driver account
-        driver = User(email='driver@farm.com', role='driver')
+        driver = User(
+            email='driver@farm.com',
+            role='driver',
+            name='Dave Driver',
+            is_suspended=False,
+            driver_verification_status='APPROVED',
+            driver_license_number='DL-KA-05-2022-7719',
+            driver_vehicle_type='Refrigerated Van',
+            driver_verified_by='admin@farm.com'
+        )
         driver.set_password('password123')
         db.session.add(driver)
         db.session.commit()
@@ -60,10 +93,11 @@ def seed():
         print(" Seed data populated successfully in MongoDB!")
         print("=============================================")
         print("Demo Accounts:")
+        print("  - Admin   : admin@farm.com    | password123")
         print("  - Farmer  : farmer@farm.com   | password123")
         print("  - Customer: customer@farm.com | password123")
         print("  - Driver  : driver@farm.com   | password123")
-        print("Farm Created: Green Valley Organic Farm (5 produce items)")
+        print("Farm Created: Green Valley Organic Farm (Approved, 5 items)")
         print("=============================================\n")
 
 if __name__ == '__main__':

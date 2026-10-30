@@ -90,7 +90,7 @@
             </div>
             <div class="col-6">
               <div class="text-center p-2 rounded-3" style="background:var(--accent-mint-subtle);">
-                <div class="fw-bold text-success">${{ "%.0f"|format(total_spent) }}</div>
+                <div class="fw-bold text-success">₹{{ "%.0f"|format(total_spent) }}</div>
                 <div class="text-muted" style="font-size:.72rem;">Total Spent</div>
               </div>
             </div>
@@ -141,7 +141,7 @@
         <div class="col-sm-6 col-xl-3">
           <div class="stat-card">
             <div class="stat-icon purple"><i class="bi bi-cash-stack"></i></div>
-            <div><div class="stat-value">${{ "%.0f"|format(total_spent) }}</div><div class="stat-label">Total Spent</div></div>
+            <div><div class="stat-value">₹{{ "%.0f"|format(total_spent) }}</div><div class="stat-label">Total Spent</div></div>
           </div>
         </div>
       </div>
@@ -231,7 +231,7 @@
               <span class="ms-2 fw-semibold text-dark">{{ order.status_display }}</span>
             </div>
             <div class="d-flex justify-content-between align-items-center">
-              <span class="fw-bold">${{ "%.2f"|format(order.total_price) }}</span>
+              <span class="fw-bold">₹{{ "%.2f"|format(order.total_price) }}</span>
               <div class="d-flex gap-1">
                 {% if order.status in ['PICKED_UP', 'Picked Up'] %}
                 <span class="badge" style="background:#f3e8ff;color:#7e22ce;font-size:.78rem;padding:.3rem .65rem;border-radius:999px;"><i class="bi bi-geo-alt-fill"></i> Live GPS</span>
@@ -271,7 +271,7 @@
               <td><a href="{{ url_for('order_details', order_id=order.id) }}" class="fw-bold text-success">#{{ order.id }}</a></td>
               <td><span class="fw-semibold">{{ order.farm.name if order.farm else 'Local Farm' }}</span></td>
               <td><span class="text-muted small">{{ order.created_at.strftime('%b %d, %Y') if order.created_at and order.created_at.strftime else 'Recent' }}</span></td>
-              <td><span class="fw-bold">${{ "%.2f"|format(order.total_price) }}</span></td>
+              <td><span class="fw-bold">₹{{ "%.2f"|format(order.total_price) }}</span></td>
               <td>
                 <span class="status-pill {{ order.status_css_class }}">
                   {{ order.status_display }}
@@ -418,7 +418,7 @@
           stockBadge(p.stock) + '</div>' +
           '<div class="text-muted small mb-2">' + (p.description || 'Farm-fresh quality.') + '</div>' +
           '<div class="d-flex align-items-center gap-1 mb-1">' +
-          '<span class="product-price">$' + Number(p.price).toFixed(2) + '</span>' +
+          '<span class="product-price">₹' + Number(p.price).toFixed(2) + '</span>' +
           '<span class="product-unit">/ ' + p.unit + '</span></div>' +
           '<a href="/farm/' + p.farm_id + '" class="text-muted text-decoration-none" style="font-size:.78rem;"><i class="bi bi-shop me-1 text-success"></i>' + p.farm_name + '</a>' +
           '<div class="mt-2">' + btn + '</div>' +

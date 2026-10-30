@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+
+{% block title %}Admin Portal - FarmFetch{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-3 px-lg-4">
+    <div class="row g-4">
+        <!-- Admin Navigation Sidebar -->
+        <div class="col-lg-3 col-xl-2">
+            <div class="card border-0 shadow-sm rounded-4 p-3 bg-white position-sticky" style="top: 80px;">
+                <div class="d-flex align-items-center gap-2 pb-3 mb-3 border-bottom">
+                    <span class="badge bg-danger-subtle text-danger p-2 rounded-3 fs-5">
+                        <i class="bi bi-shield-check"></i>
+                    </span>
+                    <div>
+                        <div class="fw-bold text-dark" style="font-size: 0.95rem;">Admin Portal</div>
+                        <small class="text-muted" style="font-size: 0.75rem;">Platform Operations</small>
+                    </div>
+                </div>
+
+                <div class="nav flex-column nav-pills gap-1">
+                    <a class="nav-link py-2 px-3 rounded-3 d-flex align-items-center justify-content-between {% if request.path in ['/admin', '/admin/dashboard'] %}active bg-success text-white fw-bold shadow-sm{% else %}text-dark hover-bg-light{% endif %}" href="{{ url_for('admin_dashboard') }}">
+                        <span><i class="bi bi-speedometer2 me-2"></i>Overview</span>
+                    </a>
+
+                    <a class="nav-link py-2 px-3 rounded-3 d-flex align-items-center justify-content-between {% if '/admin/verifications/farms' in request.path %}active bg-success text-white fw-bold shadow-sm{% else %}text-dark hover-bg-light{% endif %}" href="{{ url_for('admin_farm_verifications') }}">
+                        <span><i class="bi bi-patch-check me-2"></i>Farm Queue</span>
+                        {% if metrics and metrics.pending_farms %}
+                            <span class="badge bg-warning text-dark rounded-pill">{{ metrics.pending_farms }}</span>
+                        {% endif %}
+                    </a>
+
+                    <a class="nav-link py-2 px-3 rounded-3 d-flex align-items-center justify-content-between {% if '/admin/verifications/drivers' in request.path %}active bg-success text-white fw-bold shadow-sm{% else %}text-dark hover-bg-light{% endif %}" href="{{ url_for('admin_driver_verifications') }}">
+                        <span><i class="bi bi-truck me-2"></i>Driver Queue</span>
+                        {% if metrics and metrics.pending_drivers %}
+                            <span class="badge bg-warning text-dark rounded-pill">{{ metrics.pending_drivers }}</span>
+                        {% endif %}
+                    </a>
+
+                    <a class="nav-link py-2 px-3 rounded-3 d-flex align-items-center justify-content-between {% if '/admin/users' in request.path %}active bg-success text-white fw-bold shadow-sm{% else %}text-dark hover-bg-light{% endif %}" href="{{ url_for('admin_users') }}">
+                        <span><i class="bi bi-people me-2"></i>User Directory</span>
+                    </a>
+
+                    <a class="nav-link py-2 px-3 rounded-3 d-flex align-items-center justify-content-between {% if '/admin/complaints' in request.path %}active bg-success text-white fw-bold shadow-sm{% else %}text-dark hover-bg-light{% endif %}" href="{{ url_for('admin_complaints') }}">
+                        <span><i class="bi bi-shield-exclamation me-2"></i>Disputes</span>
+                        {% if metrics and metrics.unresolved_complaints %}
+                            <span class="badge bg-danger text-white rounded-pill">{{ metrics.unresolved_complaints }}</span>
+                        {% endif %}
+                    </a>
+
+                    <a class="nav-link py-2 px-3 rounded-3 d-flex align-items-center justify-content-between {% if '/admin/reviews' in request.path %}active bg-success text-white fw-bold shadow-sm{% else %}text-dark hover-bg-light{% endif %}" href="{{ url_for('admin_reviews') }}">
+                        <span><i class="bi bi-star me-2"></i>Reviews</span>
+                        {% if metrics and metrics.reported_reviews %}
+                            <span class="badge bg-danger text-white rounded-pill">{{ metrics.reported_reviews }}</span>
+                        {% endif %}
+                    </a>
+
+                    <a class="nav-link py-2 px-3 rounded-3 d-flex align-items-center justify-content-between {% if '/admin/audit-logs' in request.path %}active bg-success text-white fw-bold shadow-sm{% else %}text-dark hover-bg-light{% endif %}" href="{{ url_for('admin_audit_logs') }}">
+                        <span><i class="bi bi-journal-text me-2"></i>Audit Trail</span>
+                    </a>
+
+                    <a class="nav-link py-2 px-3 rounded-3 d-flex align-items-center justify-content-between {% if '/admin/settings' in request.path %}active bg-success text-white fw-bold shadow-sm{% else %}text-dark hover-bg-light{% endif %}" href="{{ url_for('admin_settings') }}">
+                        <span><i class="bi bi-gear-wide-connected me-2"></i>Settings & Rates</span>
+                    </a>
+                </div>
+
+                <div class="mt-4 pt-3 border-top">
+                    <small class="text-muted d-block mb-2" style="font-size: 0.72rem; text-transform: uppercase;">Logged In As</small>
+                    <div class="d-flex align-items-center gap-2">
+                        <div class="farm-avatar" style="width: 32px; height: 32px; font-size: 0.85rem; background: #fee2e2; color: #991b1b;">
+                            <i class="bi bi-shield-fill"></i>
+                        </div>
+                        <div class="text-truncate" style="max-width: 140px;">
+                            <div class="fw-bold text-dark small text-truncate">{{ current_user.email }}</div>
+                            <span class="badge bg-success-subtle text-success" style="font-size: 0.65rem;">Active Admin</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Admin Content Area -->
+        <div class="col-lg-9 col-xl-10">
+            {% block admin_content %}{% endblock %}
+        </div>
+    </div>
+</div>
+{% endblock %}

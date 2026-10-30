@@ -30,7 +30,14 @@
     </div>
     <div>
       <p class="mb-0" style="font-size:.82rem;opacity:.8;text-transform:uppercase;letter-spacing:.05em;">Farmer Dashboard</p>
-      <h3 class="mb-0">{{ farm.name }}</h3>
+      <h3 class="mb-0 d-flex align-items-center gap-2 flex-wrap">
+        {{ farm.name }}
+        {% if farm.verification_status == 'APPROVED' %}
+            <span class="badge bg-success-subtle text-white border border-light px-2 py-1 rounded-pill" style="font-size: 0.72rem;">
+                <i class="bi bi-patch-check-fill text-warning me-1"></i>Verified Farm
+            </span>
+        {% endif %}
+      </h3>
       <p class="mb-0">
         <i class="bi bi-geo-alt me-1"></i>{{ farm.address }}
         <span class="badge ms-2 rounded-pill" style="background:rgba(255,255,255,.2);font-size:.78rem;">{{ farm.farm_type }}</span>
@@ -47,6 +54,49 @@
     </a>
   </div>
 </div>
+
+<!-- Verification Status Alert Banner -->
+{% set f_status = farm.verification_status %}
+{% if f_status == 'PENDING' %}
+    <div class="alert alert-warning border-0 shadow-sm rounded-4 p-3 mb-4 d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <div class="d-flex align-items-center gap-3">
+            <i class="bi bi-hourglass-split fs-2 text-warning"></i>
+            <div>
+                <h6 class="fw-bold mb-1 text-dark">Farm Verification Under Review</h6>
+                <p class="mb-0 small text-dark">Your farm profile has been submitted and is currently pending manual administrative verification. Publishing new produce items requires an approved status.</p>
+            </div>
+        </div>
+        <a href="{{ url_for('edit_farm_profile') }}" class="btn btn-sm btn-outline-dark rounded-pill px-3">
+            Review Details
+        </a>
+    </div>
+{% elif f_status == 'NEEDS_MORE_INFORMATION' %}
+    <div class="alert alert-info border-0 shadow-sm rounded-4 p-3 mb-4 d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <div class="d-flex align-items-center gap-3">
+            <i class="bi bi-info-circle-fill fs-2 text-info"></i>
+            <div>
+                <h6 class="fw-bold mb-1 text-dark">Action Needed: Administrator Requested Information</h6>
+                <p class="mb-0 small text-dark">{{ farm.verification_notes or 'Please provide updated license details or address clarification.' }}</p>
+            </div>
+        </div>
+        <a href="{{ url_for('edit_farm_profile') }}" class="btn btn-sm btn-info text-white rounded-pill px-3">
+            Update & Resubmit
+        </a>
+    </div>
+{% elif f_status == 'REJECTED' %}
+    <div class="alert alert-danger border-0 shadow-sm rounded-4 p-3 mb-4 d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <div class="d-flex align-items-center gap-3">
+            <i class="bi bi-x-circle-fill fs-2 text-danger"></i>
+            <div>
+                <h6 class="fw-bold mb-1 text-danger">Farm Verification Rejected</h6>
+                <p class="mb-0 small text-dark">{{ farm.verification_notes or 'Your farm submission did not meet verification criteria. You may correct your profile and resubmit.' }}</p>
+            </div>
+        </div>
+        <a href="{{ url_for('edit_farm_profile') }}" class="btn btn-sm btn-danger rounded-pill px-3">
+            Correct & Resubmit
+        </a>
+    </div>
+{% endif %}
 
 {% if low_stock_items %}
 <div class="low-stock-banner mb-4">
@@ -109,8 +159,8 @@
       <div class="row g-3 mb-4">
         <div class="col-sm-6 col-xl-3">
           <div class="stat-card">
-            <div class="stat-icon green"><i class="bi bi-currency-dollar"></i></div>
-            <div><div class="stat-value">${{ "%.0f"|format(total_revenue) }}</div><div class="stat-label">Total Revenue</div></div>
+            <div class="stat-icon green"><i class="bi bi-currency-rupee"></i></div>
+            <div><div class="stat-value">₹{{ "%.0f"|format(total_revenue) }}</div><div class="stat-label">Total Revenue</div></div>
           </div>
         </div>
         <div class="col-sm-6 col-xl-3">
@@ -217,7 +267,7 @@
                 <small class="text-muted"><i class="bi bi-telephone me-1"></i>{{ order.customer_phone }}</small>
               </td>
               <td><span class="badge bg-light text-dark border">{{ order.items | length }} items</span></td>
-              <td><span class="fw-bold">${{ "%.2f"|format(order.total_price) }}</span></td>
+              <td><span class="fw-bold">₹{{ "%.2f"|format(order.total_price) }}</span></td>
               <td><span class="status-pill status-{{ order.status | replace(' ', '-') }}">{{ order.status }}</span></td>
               <td class="text-end">
                 <div class="d-inline-flex gap-1">
@@ -283,7 +333,7 @@
                 </div>
               </td>
               <td><span class="text-muted small">{{ item.description if item.description else '—' }}</span></td>
-              <td><span class="fw-bold text-success">${{ "%.2f"|format(item.price) }}</span></td>
+              <td><span class="fw-bold text-success">₹{{ "%.2f"|format(item.price) }}</span></td>
               <td><span class="badge bg-light text-dark border">{{ item.unit }}</span></td>
               <td><span class="badge bg-secondary-subtle text-secondary border" style="font-size:.75rem;">{{ item.category or 'Other' }}</span></td>
               <td>
@@ -438,7 +488,7 @@
             data: {
               labels: data.labels,
               datasets: [{
-                label: 'Revenue ($)',
+                label: 'Revenue (₹)',
                 data: data.data,
                 backgroundColor: 'rgba(45, 106, 79, 0.18)',
                 borderColor: 'rgba(45, 106, 79, 0.85)',
@@ -454,7 +504,7 @@
               scales: {
                 y: {
                   beginAtZero: true,
-                  ticks: { callback: function(v) { return '$' + v; }, font: { size: 11 } },
+                  ticks: { callback: function(v) { return '₹' + v; }, font: { size: 11 } },
                   grid: { color: 'rgba(0,0,0,.04)' }
                 },
                 x: { ticks: { font: { size: 11 } }, grid: { display: false } }
@@ -477,7 +527,7 @@
       var banner = document.getElementById('realtime-banner-dash');
       var text = document.getElementById('realtime-text-dash');
       if (banner && text) {
-        text.innerHTML = '<strong>New Order #' + data.order_id + ' from ' + data.customer_name + ' ($' + Number(data.total).toFixed(2) + ')!</strong>';
+        text.innerHTML = '<strong>New Order #' + data.order_id + ' from ' + data.customer_name + ' (₹' + Number(data.total).toFixed(2) + ')!</strong>';
         banner.classList.remove('d-none');
         banner.classList.add('d-flex');
       }

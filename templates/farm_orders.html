@@ -70,7 +70,7 @@
                                 <span class="text-muted small"><i class="bi bi-telephone me-1"></i>{{ order.customer_phone }}</span>
                             </td>
                             <td>
-                                <div class="fw-bold text-dark">${{ "%.2f"|format(order.total_price) }}</div>
+                                <div class="fw-bold text-dark">₹{{ "%.2f"|format(order.total_price) }}</div>
                                 <small class="text-muted">{{ order.items | length }} items</small>
                             </td>
                             <td>
@@ -203,7 +203,7 @@
                 const banner = document.getElementById('realtime-alert-banner');
                 const text = document.getElementById('realtime-alert-text');
                 if (banner && text) {
-                    text.innerHTML = `<strong>New Order #${data.order_id} received from ${data.customer_name} ($${Number(data.total).toFixed(2)})!</strong>`;
+                    text.innerHTML = `<strong>New Order #${data.order_id} received from ${data.customer_name} (₹${Number(data.total).toFixed(2)})!</strong>`;
                     banner.classList.remove('d-none');
                 }
             });

@@ -2,6 +2,50 @@
 
 {% block title %}Delivering Order #{{ order.id }} - Driver Navigation - FarmFetch{% endblock %}
 
+{% block head_extra %}
+<style>
+.text-emerald { color: #10b981 !important; }
+.bg-emerald { background-color: #10b981 !important; color: #fff !important; }
+.btn-primary-custom {
+    background: linear-gradient(135deg, #059669 0%, #10b981 100%);
+    border: none;
+    color: #fff;
+    font-weight: 600;
+    border-radius: var(--radius-md, 8px);
+    box-shadow: 0 4px 12px rgba(16, 185, 129, 0.25);
+    transition: all 0.2s ease;
+}
+.btn-primary-custom:hover {
+    background: linear-gradient(135deg, #047857 0%, #059669 100%);
+    color: #fff;
+    transform: translateY(-1px);
+    box-shadow: 0 6px 16px rgba(16, 185, 129, 0.35);
+}
+.btn-primary-custom:active {
+    transform: translateY(0);
+}
+.btn-primary-custom:disabled {
+    opacity: 0.65;
+    pointer-events: none;
+    transform: none;
+}
+@keyframes simPulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.45; transform: scale(1.18); }
+}
+.sim-live-dot {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #10b981;
+    margin-right: 6px;
+    vertical-align: middle;
+    animation: simPulse 1.2s infinite ease-in-out;
+}
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="row g-4 mb-5">
     <div class="col-12">
@@ -25,10 +69,41 @@
         </div>
     </div>
 
+    <!-- Driver Trip Compensation Banner -->
+    <div class="col-12">
+        {% set earn = order.driver_earnings %}
+        <div class="p-3 rounded-4 shadow-sm d-flex justify-content-between align-items-center flex-wrap gap-3" style="background: linear-gradient(135deg, #f0fdf4 0%, #e0f2fe 100%); border: 1px solid #bae6fd;">
+            <div class="d-flex align-items-center gap-3">
+                <div class="p-2 bg-success text-white rounded-circle fs-4" style="width:48px;height:48px;display:flex;align-items:center;justify-content:center;">
+                    <i class="bi bi-wallet2"></i>
+                </div>
+                <div>
+                    <span class="small text-uppercase text-muted fw-bold" style="letter-spacing:0.04em;">Trip Driver Compensation</span>
+                    <div class="fw-bold text-dark fs-5">
+                        Total Payout: <span class="text-success">₹{{ "%.2f"|format(earn.total_earning) }}</span>
+                        <span class="badge bg-light text-dark border ms-2 small fs-6">@ ₹{{ "%.2f"|format(earn.rate_per_km) }}/km</span>
+                    </div>
+                </div>
+            </div>
+            <div class="d-flex align-items-center gap-2 flex-wrap text-muted small">
+                <div class="p-2 bg-white rounded-3 border">
+                    <span class="text-muted d-block" style="font-size:0.72rem;">Pickup Leg (Driver &rarr; Farm)</span>
+                    <strong class="text-dark">{{ earn.pickup_distance_km }} km</strong> &bull; <span class="text-success fw-bold">₹{{ "%.2f"|format(earn.pickup_earning) }}</span>
+                    <span class="badge bg-light text-secondary border ms-1" style="font-size:0.65rem;">{{ earn.pickup_source_label }}</span>
+                </div>
+                <div class="p-2 bg-white rounded-3 border">
+                    <span class="text-muted d-block" style="font-size:0.72rem;">Drop Leg (Farm &rarr; Customer)</span>
+                    <strong class="text-dark">{{ earn.drop_distance_km }} km</strong> &bull; <span class="text-success fw-bold">₹{{ "%.2f"|format(earn.drop_earning) }}</span>
+                    <span class="badge bg-light text-secondary border ms-1" style="font-size:0.65rem;">{{ earn.drop_source_label }}</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Left Column: Verification & Steps -->
     <div class="col-lg-5">
         <!-- Live GPS Broadcast Card -->
-        <div class="dashboard-card shadow-sm mb-4 border-start border-4 border-success bg-white">
+        <div class="dashboard-card shadow-sm mb-3 border-start border-4 border-success bg-white">
             <div class="d-flex align-items-center justify-content-between mb-2">
                 <div class="d-flex align-items-center gap-2 text-success fw-bold">
                     <span class="spinner-grow spinner-grow-sm text-success" role="status"></span>
@@ -39,6 +114,58 @@
             <p class="small text-muted mb-0" id="driver-gps-status">
                 Your browser is streaming live vehicle coordinates directly to the customer's map.
             </p>
+        </div>
+
+        <!-- GPS Route Simulator Card -->
+        <div class="p-3 bg-dark text-white rounded-4 mb-3 shadow">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <span class="small text-uppercase text-emerald fw-bold">
+                    <i class="bi bi-cpu-fill me-1"></i> GPS Route Simulator
+                </span>
+                <span id="sim-status-pill" class="badge bg-secondary rounded-pill small">Standby</span>
+            </div>
+            <p class="small text-white-50 mb-3">
+                Simulate autonomous courier transit along the route in real-time. Emits live coordinates and telemetry to customer map via WebSockets.
+            </p>
+
+            <div class="d-flex flex-wrap gap-2 mb-3">
+                <button id="btn-start-sim" class="btn btn-primary-custom flex-grow-1">
+                    <i class="bi bi-play-fill me-1"></i> Start Route Simulation
+                </button>
+                <button id="btn-pause-sim" class="btn btn-outline-light btn-sm px-3" disabled="">
+                    <i class="bi bi-pause-fill"></i>
+                </button>
+                <button id="btn-reset-sim" class="btn btn-outline-light btn-sm px-3">
+                    <i class="bi bi-arrow-counterclockwise"></i>
+                </button>
+            </div>
+
+            <div class="d-flex align-items-center justify-content-between">
+                <span class="small text-white-50">Simulation Speed:</span>
+                <div class="btn-group btn-group-sm" role="group">
+                    <input type="radio" class="btn-check" name="speedOption" id="spd1" autocomplete="off" checked="">
+                    <label class="btn btn-outline-light btn-sm px-2" for="spd1">1x</label>
+                    <input type="radio" class="btn-check" name="speedOption" id="spd3" autocomplete="off">
+                    <label class="btn btn-outline-light btn-sm px-2" for="spd3">3x</label>
+                    <input type="radio" class="btn-check" name="speedOption" id="spd10" autocomplete="off">
+                    <label class="btn btn-outline-light btn-sm px-2" for="spd10">10x</label>
+                </div>
+            </div>
+
+            <!-- Route Telemetry & Progress HUD -->
+            <div class="mt-3 pt-2 border-top border-secondary border-opacity-50" id="sim-telemetry-hud" style="display: none;">
+                <div class="d-flex justify-content-between small text-white-50 mb-1">
+                    <span>Route Transit Progress</span>
+                    <span id="sim-progress-pct" class="text-emerald fw-bold">0%</span>
+                </div>
+                <div class="progress mb-2" style="height: 6px; background: rgba(255,255,255,0.18);">
+                    <div id="sim-progress-bar" class="progress-bar bg-success" role="progressbar" style="width: 0%; transition: width 0.2s linear;"></div>
+                </div>
+                <div class="d-flex justify-content-between align-items-center text-white-50" style="font-size: 0.73rem;">
+                    <span id="sim-coord-text"><i class="bi bi-geo-alt me-1"></i>Ready</span>
+                    <span id="sim-step-text">Waypoint 0 / 0</span>
+                </div>
+            </div>
         </div>
 
         {# --- STAGE 1: DRIVER_ASSIGNED -> Show Pickup OTP to Farmer --- #}
@@ -146,7 +273,7 @@
             <div class="mb-3">
                 <div class="d-flex justify-content-between align-items-center p-2 rounded bg-light border">
                     <span class="text-muted small">Cash to Collect (COD):</span>
-                    <span class="fs-5 fw-extrabold text-success">${{ "%.2f"|format(order.total_price) }}</span>
+                    <span class="fs-5 fw-extrabold text-success">₹{{ "%.2f"|format(order.total_price) }}</span>
                 </div>
             </div>
 
@@ -297,37 +424,24 @@
                 iconAnchor: [17, 17]
             });
 
-            // Fetch real road route from OSRM backend endpoint
-            function fetchRoadRoute() {
-                fetch(`/api/order/${orderId}/route`)
-                    .then(res => res.json())
-                    .then(data => {
-                        if (data && data.geometry && data.geometry.length > 0) {
-                            if (navPolyline) map.removeLayer(navPolyline);
-                            navPolyline = L.polyline(data.geometry, {
-                                color: data.is_road_route ? '#2563eb' : '#f59e0b',
-                                weight: 5,
-                                opacity: 0.85,
-                                dashArray: data.is_road_route ? null : '8, 8'
-                            }).addTo(map);
+            // Simulator UI Elements
+            const btnStartSim = document.getElementById('btn-start-sim');
+            const btnPauseSim = document.getElementById('btn-pause-sim');
+            const btnResetSim = document.getElementById('btn-reset-sim');
+            const simStatusPill = document.getElementById('sim-status-pill');
+            const simTelemetryHud = document.getElementById('sim-telemetry-hud');
+            const simProgressBar = document.getElementById('sim-progress-bar');
+            const simProgressPct = document.getElementById('sim-progress-pct');
+            const simCoordText = document.getElementById('sim-coord-text');
+            const simStepText = document.getElementById('sim-step-text');
 
-                            if (routeBadge && etaText) {
-                                if (data.is_road_route) {
-                                    routeBadge.className = "badge bg-success text-white rounded-pill";
-                                    routeBadge.innerHTML = '<i class="bi bi-check2-circle me-1"></i>Road Route';
-                                    etaText.innerHTML = `<strong>${data.distance_km} km</strong> • approx <strong>${data.eta_mins} mins</strong>`;
-                                } else {
-                                    routeBadge.className = "badge bg-warning text-dark rounded-pill";
-                                    routeBadge.innerHTML = '<i class="bi bi-exclamation-triangle me-1"></i>Straight Line';
-                                    etaText.innerText = data.eta_text || `${data.distance_km} km (Route ETA unavailable)`;
-                                }
-                            }
-                        }
-                    })
-                    .catch(err => console.warn('Road route fetch warning:', err));
-            }
-
-            fetchRoadRoute();
+            // Simulator State
+            let simWaypoints = [];
+            let simIndex = 0;
+            let simRunning = false;
+            let simPaused = false;
+            let simTimer = null;
+            let simSpeed = 1;
 
             // Fit route camera button
             const fitBtn = document.getElementById('btn-fit-driver-map');
@@ -353,9 +467,346 @@
             // Only stream geolocation while order is in active delivery
             const isActive = orderStatus === 'DRIVER_ASSIGNED' || orderStatus === 'PICKED_UP' || orderStatus === 'Picked Up';
 
+            // --- Route Subdivider & Simulator Waypoint Generation ---
+            function buildDenseRoutePath(rawPoints, targetSteps = 80) {
+                if (!rawPoints || rawPoints.length === 0) return [];
+                if (rawPoints.length === 1) return [rawPoints[0]];
+
+                let totalDist = 0;
+                const segDistances = [];
+                for (let i = 0; i < rawPoints.length - 1; i++) {
+                    const dLat = rawPoints[i+1][0] - rawPoints[i][0];
+                    const dLng = rawPoints[i+1][1] - rawPoints[i][1];
+                    const d = Math.sqrt(dLat * dLat + dLng * dLng);
+                    segDistances.push(d);
+                    totalDist += d;
+                }
+
+                if (totalDist === 0) return [rawPoints[0]];
+
+                const densePath = [];
+                for (let i = 0; i < rawPoints.length - 1; i++) {
+                    const p1 = rawPoints[i];
+                    const p2 = rawPoints[i+1];
+                    const segDist = segDistances[i];
+                    const stepsForSeg = Math.max(1, Math.round((segDist / totalDist) * targetSteps));
+
+                    for (let s = 0; s < stepsForSeg; s++) {
+                        const ratio = s / stepsForSeg;
+                        const lat = p1[0] + (p2[0] - p1[0]) * ratio;
+                        const lng = p1[1] + (p2[1] - p1[1]) * ratio;
+                        densePath.push([lat, lng]);
+                    }
+                }
+                densePath.push(rawPoints[rawPoints.length - 1]);
+                return densePath;
+            }
+
+            function initFallbackWaypoints() {
+                const pts = [];
+                if (farmLat && farmLng) pts.push([farmLat, farmLng]);
+                if (customerLat && customerLng) pts.push([customerLat, customerLng]);
+                if (pts.length >= 2) {
+                    simWaypoints = buildDenseRoutePath(pts, 60);
+                } else if (pts.length === 1) {
+                    simWaypoints = [pts[0]];
+                }
+                updateSimUiReady();
+            }
+
+            function updateSimUiReady() {
+                if (!simRunning && simStepText && simWaypoints.length > 0) {
+                    simStepText.innerText = `Waypoint 0 / ${simWaypoints.length}`;
+                    if (simCoordText) {
+                        simCoordText.innerHTML = `<i class="bi bi-geo-alt me-1"></i>${simWaypoints.length} waypoints ready`;
+                    }
+                }
+            }
+
+            // Fetch real road route from OSRM backend endpoint
+            function fetchRoadRoute() {
+                fetch(`/api/order/${orderId}/route`)
+                    .then(res => res.json())
+                    .then(data => {
+                        if (data && data.geometry && data.geometry.length > 0) {
+                            if (navPolyline) map.removeLayer(navPolyline);
+                            navPolyline = L.polyline(data.geometry, {
+                                color: data.is_road_route ? '#2563eb' : '#f59e0b',
+                                weight: 5,
+                                opacity: 0.85,
+                                dashArray: data.is_road_route ? null : '8, 8'
+                            }).addTo(map);
+
+                            if (routeBadge && etaText) {
+                                if (data.is_road_route) {
+                                    routeBadge.className = "badge bg-success text-white rounded-pill";
+                                    routeBadge.innerHTML = '<i class="bi bi-check2-circle me-1"></i>Road Route';
+                                    etaText.innerHTML = `<strong>${data.distance_km} km</strong> • approx <strong>${data.eta_mins} mins</strong>`;
+                                } else {
+                                    routeBadge.className = "badge bg-warning text-dark rounded-pill";
+                                    routeBadge.innerHTML = '<i class="bi bi-exclamation-triangle me-1"></i>Straight Line';
+                                    etaText.innerText = data.eta_text || `${data.distance_km} km (Route ETA unavailable)`;
+                                }
+                            }
+
+                            simWaypoints = buildDenseRoutePath(data.geometry, 80);
+                            updateSimUiReady();
+                        } else {
+                            initFallbackWaypoints();
+                        }
+                    })
+                    .catch(err => {
+                        console.warn('Road route fetch warning:', err);
+                        initFallbackWaypoints();
+                    });
+            }
+
+            fetchRoadRoute();
+
+            // --- Simulator Speed Calculation ---
+            function getSimIntervalAndStep() {
+                if (simSpeed === 10) {
+                    return { intervalMs: 250, stepInc: 2 };
+                } else if (simSpeed === 3) {
+                    return { intervalMs: 350, stepInc: 1 };
+                } else {
+                    return { intervalMs: 1000, stepInc: 1 };
+                }
+            }
+
+            document.querySelectorAll('input[name="speedOption"]').forEach(radio => {
+                radio.addEventListener('change', (e) => {
+                    if (e.target.id === 'spd10') simSpeed = 10;
+                    else if (e.target.id === 'spd3') simSpeed = 3;
+                    else simSpeed = 1;
+
+                    if (simRunning && !simPaused) {
+                        clearInterval(simTimer);
+                        const { intervalMs, stepInc } = getSimIntervalAndStep();
+                        simTimer = setInterval(() => stepSimulation(stepInc), intervalMs);
+                        if (simStatusPill) {
+                            simStatusPill.innerHTML = `<span class="sim-live-dot"></span>Simulating (${simSpeed}x)`;
+                        }
+                    }
+                });
+            });
+
+            // --- Start / Resume Simulation ---
+            function startSimulation() {
+                if (!isActive) {
+                    alert('Simulation is only active for in-transit orders.');
+                    return;
+                }
+                if (simWaypoints.length === 0) {
+                    initFallbackWaypoints();
+                    if (simWaypoints.length === 0) {
+                        alert('Unable to simulate: Route coordinates are missing for this order.');
+                        return;
+                    }
+                }
+
+                if (simIndex >= simWaypoints.length - 1) {
+                    simIndex = 0;
+                }
+
+                // Pause real browser geolocation watch so hardware GPS doesn't overwrite simulated coordinates
+                stopGpsStreaming();
+
+                simRunning = true;
+                simPaused = false;
+
+                if (simTelemetryHud) simTelemetryHud.style.display = 'block';
+
+                if (btnStartSim) {
+                    btnStartSim.disabled = true;
+                    btnStartSim.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status"></span> Simulating Transit...';
+                }
+                if (btnPauseSim) btnPauseSim.disabled = false;
+                if (btnResetSim) btnResetSim.disabled = false;
+
+                if (simStatusPill) {
+                    simStatusPill.className = 'badge bg-success rounded-pill small';
+                    simStatusPill.innerHTML = `<span class="sim-live-dot"></span>Simulating (${simSpeed}x)`;
+                }
+
+                renderSimPoint(simIndex);
+
+                const { intervalMs, stepInc } = getSimIntervalAndStep();
+                clearInterval(simTimer);
+                simTimer = setInterval(() => stepSimulation(stepInc), intervalMs);
+            }
+
+            // --- Step Simulation ---
+            function stepSimulation(stepInc) {
+                if (!simRunning || simPaused) return;
+
+                simIndex += stepInc;
+                if (simIndex >= simWaypoints.length - 1) {
+                    simIndex = simWaypoints.length - 1;
+                    renderSimPoint(simIndex);
+                    completeSimulation();
+                    return;
+                }
+
+                renderSimPoint(simIndex);
+            }
+
+            // --- Render Coordinate & Emit WebSocket Broadcast ---
+            function renderSimPoint(idx) {
+                if (!simWaypoints || idx >= simWaypoints.length) return;
+                const [lat, lng] = simWaypoints[idx];
+
+                if (!driverMarker) {
+                    driverMarker = L.marker([lat, lng], { icon: vehicleIcon }).addTo(map)
+                        .bindPopup('<b>Your Current Position (Simulated)</b>');
+                } else {
+                    driverMarker.setLatLng([lat, lng]);
+                }
+
+                // Smoothly pan camera to track vehicle
+                map.panTo([lat, lng], { animate: true, duration: 0.25 });
+
+                // Emit authenticated location update to server and customer room
+                socket.emit('driver_location_update', {
+                    order_id: orderId,
+                    lat: lat,
+                    lng: lng,
+                    is_simulated: true
+                });
+
+                // Update Telemetry HUD
+                const pct = Math.min(100, Math.round(((idx + 1) / simWaypoints.length) * 100));
+                if (simProgressBar) simProgressBar.style.width = pct + '%';
+                if (simProgressPct) simProgressPct.innerText = pct + '%';
+                if (simCoordText) {
+                    simCoordText.innerHTML = `<i class="bi bi-geo-alt-fill text-success me-1"></i>${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+                }
+                if (simStepText) {
+                    simStepText.innerText = `Waypoint ${idx + 1} / ${simWaypoints.length}`;
+                }
+
+                if (gpsStatusEl) {
+                    gpsStatusEl.innerText = `Simulated GPS Broadcast: Streaming (${lat.toFixed(5)}, ${lng.toFixed(5)}) • ${simSpeed}x active`;
+                    gpsStatusEl.className = 'badge bg-success text-white';
+                }
+            }
+
+            // --- Pause Simulation ---
+            function pauseSimulation() {
+                if (!simRunning || simPaused) return;
+                clearInterval(simTimer);
+                simPaused = true;
+
+                if (btnStartSim) {
+                    btnStartSim.disabled = false;
+                    btnStartSim.innerHTML = '<i class="bi bi-play-fill me-1"></i> Resume Simulation';
+                }
+                if (btnPauseSim) btnPauseSim.disabled = true;
+
+                if (simStatusPill) {
+                    simStatusPill.className = 'badge bg-warning text-dark rounded-pill small';
+                    simStatusPill.innerHTML = '<i class="bi bi-pause-fill me-1"></i>Paused';
+                }
+
+                if (gpsStatusEl) {
+                    gpsStatusEl.innerText = 'GPS Simulation paused.';
+                    gpsStatusEl.className = 'badge bg-warning text-dark';
+                }
+            }
+
+            // --- Reset Simulation ---
+            function resetSimulation() {
+                clearInterval(simTimer);
+                simRunning = false;
+                simPaused = false;
+                simIndex = 0;
+
+                if (btnStartSim) {
+                    btnStartSim.disabled = false;
+                    btnStartSim.innerHTML = '<i class="bi bi-play-fill me-1"></i> Start Route Simulation';
+                }
+                if (btnPauseSim) btnPauseSim.disabled = true;
+
+                if (simStatusPill) {
+                    simStatusPill.className = 'badge bg-secondary rounded-pill small';
+                    simStatusPill.innerText = 'Standby';
+                }
+
+                if (simProgressBar) simProgressBar.style.width = '0%';
+                if (simProgressPct) simProgressPct.innerText = '0%';
+                if (simStepText && simWaypoints.length > 0) {
+                    simStepText.innerText = `Waypoint 0 / ${simWaypoints.length}`;
+                }
+                if (simCoordText) {
+                    simCoordText.innerHTML = '<i class="bi bi-geo-alt me-1"></i>Ready';
+                }
+
+                if (simWaypoints.length > 0) {
+                    const [sLat, sLng] = simWaypoints[0];
+                    if (driverMarker) driverMarker.setLatLng([sLat, sLng]);
+                    map.panTo([sLat, sLng]);
+
+                    socket.emit('driver_location_update', {
+                        order_id: orderId,
+                        lat: sLat,
+                        lng: sLng,
+                        is_simulated: true
+                    });
+                }
+
+                if (gpsStatusEl) {
+                    gpsStatusEl.innerText = 'Simulation reset. Ready to broadcast.';
+                    gpsStatusEl.className = 'badge bg-secondary text-white';
+                }
+            }
+
+            // --- Complete Simulation ---
+            function completeSimulation() {
+                clearInterval(simTimer);
+                simRunning = false;
+                simPaused = false;
+
+                if (btnStartSim) {
+                    btnStartSim.disabled = false;
+                    btnStartSim.innerHTML = '<i class="bi bi-arrow-counterclockwise me-1"></i> Restart Simulation';
+                }
+                if (btnPauseSim) btnPauseSim.disabled = true;
+
+                if (simStatusPill) {
+                    simStatusPill.className = 'badge bg-info text-white rounded-pill small';
+                    simStatusPill.innerHTML = '<i class="bi bi-check2-circle me-1"></i>Arrived at Destination';
+                }
+
+                if (simProgressBar) simProgressBar.style.width = '100%';
+                if (simProgressPct) simProgressPct.innerText = '100%';
+
+                if (gpsStatusEl) {
+                    gpsStatusEl.innerText = 'Simulated courier arrived at destination safely.';
+                    gpsStatusEl.className = 'badge bg-info text-white';
+                }
+            }
+
+            // Attach Simulator Event Listeners
+            if (btnStartSim) btnStartSim.addEventListener('click', startSimulation);
+            if (btnPauseSim) btnPauseSim.addEventListener('click', pauseSimulation);
+            if (btnResetSim) btnResetSim.addEventListener('click', resetSimulation);
+
+            if (!isActive) {
+                if (btnStartSim) {
+                    btnStartSim.disabled = true;
+                    btnStartSim.title = 'Simulation inactive for completed/pending order.';
+                }
+                if (simStatusPill) {
+                    simStatusPill.innerText = 'Inactive';
+                }
+            }
+
+            // Default hardware Geolocation Watcher (only active when not simulating)
             if (isActive && navigator.geolocation) {
                 watchId = navigator.geolocation.watchPosition(
                     (position) => {
+                        if (simRunning) return; // Do not override active simulation
+
                         const lat = position.coords.latitude;
                         const lng = position.coords.longitude;
                         
@@ -384,12 +835,12 @@
                         console.warn('Driver geolocation error:', err.message);
                         if (err.code === err.PERMISSION_DENIED) {
                             if (permAlert) permAlert.classList.remove('d-none');
-                            if (gpsStatusEl) {
-                                gpsStatusEl.innerText = "GPS Permission Denied. Live streaming paused.";
+                            if (gpsStatusEl && !simRunning) {
+                                gpsStatusEl.innerText = "GPS Permission Denied. Use Route Simulator above.";
                                 gpsStatusEl.className = "badge bg-danger text-white";
                             }
                         } else {
-                            if (gpsStatusEl) {
+                            if (gpsStatusEl && !simRunning) {
                                 gpsStatusEl.innerText = "Acquiring accurate GPS fix...";
                                 gpsStatusEl.className = "badge bg-warning text-dark";
                             }

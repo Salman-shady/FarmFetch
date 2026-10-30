@@ -1,0 +1,336 @@
+{% extends "admin/layout.html" %}
+
+{% block admin_content %}
+<!-- Dashboard Header -->
+<div class="d-flex flex-wrap justify-content-between align-items-center mb-4 gap-3">
+    <div>
+        <h2 class="h3 fw-bold text-dark mb-1">Platform Operations Dashboard</h2>
+        <p class="text-muted small mb-0">Real-time marketplace monitoring, verification queues, and financial analytics.</p>
+    </div>
+    <div class="d-flex align-items-center gap-2">
+        <span class="badge bg-success-subtle text-success px-3 py-2 rounded-pill border border-success-subtle">
+            <i class="bi bi-broadcast me-1"></i> Live Platform Monitoring
+        </span>
+        <a href="{{ url_for('admin_audit_logs') }}" class="btn btn-outline-secondary btn-sm rounded-pill px-3">
+            <i class="bi bi-clock-history me-1"></i> Audit Trail
+        </a>
+    </div>
+</div>
+
+<!-- Key Performance Metric Cards -->
+<div class="row g-3 mb-4">
+    <!-- Card 1: Gross Order Value (GMV) -->
+    <div class="col-sm-6 col-xl-3">
+        <div class="card border-0 shadow-sm rounded-4 p-3 bg-white h-100">
+            <div class="d-flex justify-content-between align-items-start mb-2">
+                <span class="text-muted small text-uppercase fw-semibold" style="letter-spacing: 0.04em;">Gross Order Value</span>
+                <span class="badge bg-success-subtle text-success p-2 rounded-3 fs-5">
+                    <i class="bi bi-currency-rupee"></i>
+                </span>
+            </div>
+            <div class="fs-3 fw-bold text-dark mb-1">₹{{ "%.2f"|format(metrics.total_gmv) }}</div>
+            <div class="d-flex align-items-center text-muted small">
+                <span class="text-success fw-semibold me-1">₹{{ "%.2f"|format(metrics.completed_gmv) }}</span> fulfilled GMV
+            </div>
+        </div>
+    </div>
+
+    <!-- Card 2: Registered Users -->
+    <div class="col-sm-6 col-xl-3">
+        <div class="card border-0 shadow-sm rounded-4 p-3 bg-white h-100">
+            <div class="d-flex justify-content-between align-items-start mb-2">
+                <span class="text-muted small text-uppercase fw-semibold" style="letter-spacing: 0.04em;">Platform Users</span>
+                <span class="badge bg-primary-subtle text-primary p-2 rounded-3 fs-5">
+                    <i class="bi bi-people"></i>
+                </span>
+            </div>
+            <div class="fs-3 fw-bold text-dark mb-1">{{ metrics.total_customers + metrics.total_farmers + metrics.total_drivers }}</div>
+            <div class="d-flex flex-wrap gap-2 text-muted small" style="font-size: 0.76rem;">
+                <span><strong>{{ metrics.total_customers }}</strong> Cust</span> &bull;
+                <span><strong>{{ metrics.total_farmers }}</strong> Farm</span> &bull;
+                <span><strong>{{ metrics.total_drivers }}</strong> Drv</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Card 3: Verification Queues -->
+    <div class="col-sm-6 col-xl-3">
+        <div class="card border-0 shadow-sm rounded-4 p-3 bg-white h-100">
+            <div class="d-flex justify-content-between align-items-start mb-2">
+                <span class="text-muted small text-uppercase fw-semibold" style="letter-spacing: 0.04em;">Pending Verifications</span>
+                <span class="badge bg-warning-subtle text-warning p-2 rounded-3 fs-5">
+                    <i class="bi bi-patch-check"></i>
+                </span>
+            </div>
+            <div class="fs-3 fw-bold text-dark mb-1">{{ metrics.pending_farms + metrics.pending_drivers }}</div>
+            <div class="d-flex align-items-center gap-2 small">
+                <a href="{{ url_for('admin_farm_verifications', status='PENDING') }}" class="text-decoration-none">
+                    <span class="badge bg-warning text-dark">{{ metrics.pending_farms }} Farms</span>
+                </a>
+                <a href="{{ url_for('admin_driver_verifications', status='PENDING') }}" class="text-decoration-none">
+                    <span class="badge bg-secondary text-white">{{ metrics.pending_drivers }} Drivers</span>
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Card 4: Open Disputes / Complaints -->
+    <div class="col-sm-6 col-xl-3">
+        <div class="card border-0 shadow-sm rounded-4 p-3 bg-white h-100">
+            <div class="d-flex justify-content-between align-items-start mb-2">
+                <span class="text-muted small text-uppercase fw-semibold" style="letter-spacing: 0.04em;">Unresolved Disputes</span>
+                <span class="badge bg-danger-subtle text-danger p-2 rounded-3 fs-5">
+                    <i class="bi bi-shield-exclamation"></i>
+                </span>
+            </div>
+            <div class="fs-3 fw-bold text-dark mb-1">{{ metrics.unresolved_complaints }}</div>
+            <div class="d-flex align-items-center text-muted small">
+                <a href="{{ url_for('admin_complaints', status='OPEN') }}" class="text-danger fw-semibold text-decoration-none">
+                    Review Open Disputes <i class="bi bi-arrow-right"></i>
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Section: Financial Breakdown & Verification Health -->
+<div class="row g-4 mb-4">
+    <!-- Financial Breakdown Card -->
+    <div class="col-lg-6">
+        <div class="card border-0 shadow-sm rounded-4 p-4 bg-white h-100">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h3 class="h6 fw-bold text-dark mb-0">Financial & Marketplace Breakdown</h3>
+                <span class="badge bg-info-subtle text-info border border-info-subtle rounded-pill px-2 py-1 small">
+                    Transparent Accounting
+                </span>
+            </div>
+            <p class="text-muted small mb-3">Clear delineation between Gross Marketplace Volume, platform commission, and farmer net payouts.</p>
+
+            <div class="row g-3">
+                <div class="col-6">
+                    <div class="p-3 bg-light rounded-3">
+                        <small class="text-muted d-block mb-1">Fulfilled Gross Value</small>
+                        <div class="h5 fw-bold text-dark mb-0">₹{{ "%.2f"|format(metrics.completed_gmv) }}</div>
+                        <small class="text-muted" style="font-size: 0.72rem;">Delivered order transactions</small>
+                    </div>
+                </div>
+                <div class="col-6">
+                    <div class="p-3 bg-light rounded-3">
+                        <small class="text-muted d-block mb-1">Platform Revenue (5%)</small>
+                        <div class="h5 fw-bold text-primary mb-0">₹{{ "%.2f"|format(metrics.platform_revenue) }}</div>
+                        <small class="text-muted" style="font-size: 0.72rem;">5% platform service fee</small>
+                    </div>
+                </div>
+                <div class="col-6">
+                    <div class="p-3 bg-light rounded-3">
+                        <small class="text-muted d-block mb-1">Farmer Net Payouts (95%)</small>
+                        <div class="h5 fw-bold text-success mb-0">₹{{ "%.2f"|format(metrics.farmer_net_payout) }}</div>
+                        <small class="text-muted" style="font-size: 0.72rem;">Net earnings to producers</small>
+                    </div>
+                </div>
+                <div class="col-6">
+                    <div class="p-3 bg-light rounded-3">
+                        <small class="text-muted d-block mb-1">Cancelled Order Value</small>
+                        <div class="h5 fw-bold text-muted mb-0">{{ metrics.cancelled_orders }} orders</div>
+                        <small class="text-muted" style="font-size: 0.72rem;">Refunded / restored inventory</small>
+                    </div>
+                </div>
+
+                <!-- Driver Earnings Rule Metric -->
+                <div class="col-12">
+                    <div class="p-3 rounded-3 d-flex justify-content-between align-items-center flex-wrap gap-2" style="background: linear-gradient(135deg, #f0fdf4 0%, #e0f2fe 100%); border: 1px solid #bae6fd;">
+                        <div>
+                            <span class="badge bg-success text-white mb-1"><i class="bi bi-truck me-1"></i>Driver Earnings Rule</span>
+                            <div class="fw-bold text-dark small">Active Rate: ₹{{ "%.2f"|format(metrics.driver_rate_per_km) }}/km (Pickup & Drop)</div>
+                            <small class="text-muted" style="font-size: 0.72rem;">Total courier payouts finalized: ₹{{ "%.2f"|format(metrics.total_driver_payouts) }}</small>
+                        </div>
+                        <a href="{{ url_for('admin_settings') }}" class="btn btn-sm btn-outline-primary rounded-pill px-3">
+                            <i class="bi bi-gear-fill me-1"></i>Configure Rate
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Verification & Operations Status -->
+    <div class="col-lg-6">
+        <div class="card border-0 shadow-sm rounded-4 p-4 bg-white h-100">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h3 class="h6 fw-bold text-dark mb-0">Entity Verification Health</h3>
+                <span class="badge bg-secondary-subtle text-secondary rounded-pill px-2 py-1 small">KYC & Compliance</span>
+            </div>
+
+            <!-- Farm Verification Row -->
+            <div class="mb-4">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <span class="fw-semibold text-dark small"><i class="bi bi-patch-check-fill text-success me-1"></i>Farm Profiles</span>
+                    <span class="small text-muted">{{ metrics.approved_farms }} approved of {{ metrics.approved_farms + metrics.pending_farms + metrics.rejected_farms + metrics.info_needed_farms }} total</span>
+                </div>
+                <div class="d-flex gap-2 flex-wrap">
+                    <a href="{{ url_for('admin_farm_verifications', status='APPROVED') }}" class="btn btn-sm btn-outline-success rounded-pill px-2 py-1" style="font-size: 0.75rem;">
+                        <i class="bi bi-check-circle me-1"></i>Approved: {{ metrics.approved_farms }}
+                    </a>
+                    <a href="{{ url_for('admin_farm_verifications', status='PENDING') }}" class="btn btn-sm btn-outline-warning rounded-pill px-2 py-1" style="font-size: 0.75rem;">
+                        <i class="bi bi-hourglass-split me-1"></i>Pending: {{ metrics.pending_farms }}
+                    </a>
+                    <a href="{{ url_for('admin_farm_verifications', status='NEEDS_MORE_INFORMATION') }}" class="btn btn-sm btn-outline-info rounded-pill px-2 py-1" style="font-size: 0.75rem;">
+                        <i class="bi bi-question-circle me-1"></i>Info Needed: {{ metrics.info_needed_farms }}
+                    </a>
+                    <a href="{{ url_for('admin_farm_verifications', status='REJECTED') }}" class="btn btn-sm btn-outline-danger rounded-pill px-2 py-1" style="font-size: 0.75rem;">
+                        <i class="bi bi-x-circle me-1"></i>Rejected: {{ metrics.rejected_farms }}
+                    </a>
+                </div>
+            </div>
+
+            <!-- Driver Verification Row -->
+            <div class="mb-2">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <span class="fw-semibold text-dark small"><i class="bi bi-truck text-primary me-1"></i>Delivery Drivers</span>
+                    <span class="small text-muted">{{ metrics.approved_drivers }} approved of {{ metrics.total_drivers }} total</span>
+                </div>
+                <div class="d-flex gap-2 flex-wrap">
+                    <a href="{{ url_for('admin_driver_verifications', status='APPROVED') }}" class="btn btn-sm btn-outline-success rounded-pill px-2 py-1" style="font-size: 0.75rem;">
+                        <i class="bi bi-check-circle me-1"></i>Approved: {{ metrics.approved_drivers }}
+                    </a>
+                    <a href="{{ url_for('admin_driver_verifications', status='PENDING') }}" class="btn btn-sm btn-outline-warning rounded-pill px-2 py-1" style="font-size: 0.75rem;">
+                        <i class="bi bi-hourglass-split me-1"></i>Pending: {{ metrics.pending_drivers }}
+                    </a>
+                    <a href="{{ url_for('admin_driver_verifications', status='NEEDS_MORE_INFORMATION') }}" class="btn btn-sm btn-outline-info rounded-pill px-2 py-1" style="font-size: 0.75rem;">
+                        <i class="bi bi-question-circle me-1"></i>Info Needed: {{ metrics.info_needed_drivers }}
+                    </a>
+                    <a href="{{ url_for('admin_driver_verifications', status='REJECTED') }}" class="btn btn-sm btn-outline-danger rounded-pill px-2 py-1" style="font-size: 0.75rem;">
+                        <i class="bi bi-x-circle me-1"></i>Rejected: {{ metrics.rejected_drivers }}
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Section: Order Lifecycle Pipeline -->
+<div class="card border-0 shadow-sm rounded-4 p-4 bg-white mb-4">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <div>
+            <h3 class="h6 fw-bold text-dark mb-1">Order Pipeline Distribution</h3>
+            <p class="text-muted small mb-0">Total of {{ metrics.total_orders }} orders placed across all platform stages.</p>
+        </div>
+        <span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill px-3 py-1">
+            {{ metrics.completed_orders }} Completed / {{ metrics.cancelled_orders }} Cancelled
+        </span>
+    </div>
+
+    <div class="row g-2">
+        {% set statuses = [
+            ('PLACED', 'Placed', 'secondary'),
+            ('FARMER_ACCEPTED', 'Accepted', 'info'),
+            ('PREPARING', 'Preparing', 'warning'),
+            ('READY_FOR_PICKUP', 'Ready', 'primary'),
+            ('DRIVER_ASSIGNED', 'Assigned', 'info'),
+            ('PICKED_UP', 'Picked Up', 'warning'),
+            ('DELIVERED', 'Delivered', 'success'),
+            ('CANCELLED', 'Cancelled', 'danger')
+        ] %}
+
+        {% for key, label, color in statuses %}
+            {% set count = metrics.order_status_counts.get(key, 0) %}
+            <div class="col-6 col-md-3 col-xl">
+                <div class="p-3 rounded-3 text-center border {% if count > 0 %}border-{{ color }}-subtle bg-{{ color }}-subtle{% else %}bg-light border-light{% endif %}">
+                    <small class="text-muted d-block text-truncate mb-1" style="font-size: 0.75rem;">{{ label }}</small>
+                    <div class="fs-4 fw-bold {% if count > 0 %}text-{{ color }}{% else %}text-muted{% endif %}">{{ count }}</div>
+                </div>
+            </div>
+        {% endfor %}
+    </div>
+</div>
+
+<!-- Section: Operational Activity Feeds -->
+<div class="row g-4">
+    <!-- Recent Orders -->
+    <div class="col-lg-6">
+        <div class="card border-0 shadow-sm rounded-4 p-3 bg-white h-100">
+            <div class="d-flex justify-content-between align-items-center mb-3 px-2">
+                <h4 class="h6 fw-bold text-dark mb-0">Recent Order Activity</h4>
+                <small class="text-muted">Last {{ metrics.recent_orders|length }} orders</small>
+            </div>
+
+            {% if metrics.recent_orders %}
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle mb-0" style="font-size: 0.85rem;">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Order</th>
+                                <th>Customer</th>
+                                <th>Farm</th>
+                                <th>Total</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for ord in metrics.recent_orders %}
+                                <tr>
+                                    <td class="fw-bold">
+                                        <a href="{{ url_for('order_details', order_id=ord.id) }}" class="text-decoration-none">
+                                            #{{ ord.id }}
+                                        </a>
+                                    </td>
+                                    <td class="text-truncate" style="max-width: 110px;">
+                                        {{ ord.customer.email.split('@')[0] if ord.customer else 'Guest' }}
+                                    </td>
+                                    <td class="text-truncate" style="max-width: 110px;">
+                                        {{ ord.farm.name if ord.farm else 'Farm #' ~ ord.farm_id }}
+                                    </td>
+                                    <td class="fw-semibold">₹{{ "%.2f"|format(ord.total_price or 0) }}</td>
+                                    <td>
+                                        <span class="badge bg-secondary-subtle text-secondary" style="font-size: 0.7rem;">
+                                            {{ ord.status }}
+                                        </span>
+                                    </td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            {% else %}
+                <div class="text-center py-4 text-muted small">
+                    <i class="bi bi-receipt fs-2 d-block mb-1 text-secondary"></i>
+                    No orders placed yet.
+                </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Recent Audit Logs -->
+    <div class="col-lg-6">
+        <div class="card border-0 shadow-sm rounded-4 p-3 bg-white h-100">
+            <div class="d-flex justify-content-between align-items-center mb-3 px-2">
+                <h4 class="h6 fw-bold text-dark mb-0">Administrative Audit Trail</h4>
+                <a href="{{ url_for('admin_audit_logs') }}" class="small text-decoration-none text-success">
+                    View All <i class="bi bi-chevron-right"></i>
+                </a>
+            </div>
+
+            {% if metrics.recent_logs %}
+                <div class="d-flex flex-column gap-2">
+                    {% for log in metrics.recent_logs %}
+                        <div class="p-2 rounded-3 bg-light d-flex align-items-center justify-content-between" style="font-size: 0.82rem;">
+                            <div class="d-flex align-items-center gap-2">
+                                <span class="badge bg-dark-subtle text-dark" style="font-size: 0.68rem;">{{ log.action }}</span>
+                                <span class="text-dark fw-semibold text-truncate" style="max-width: 160px;">{{ log.actor_email }}</span>
+                            </div>
+                            <span class="text-muted small" style="font-size: 0.72rem;">
+                                {{ log.timestamp_display if log.timestamp_display else 'Recently' }}
+                            </span>
+                        </div>
+                    {% endfor %}
+                </div>
+            {% else %}
+                <div class="text-center py-4 text-muted small">
+                    <i class="bi bi-journal-text fs-2 d-block mb-1 text-secondary"></i>
+                    No administrative actions recorded yet.
+                </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}
