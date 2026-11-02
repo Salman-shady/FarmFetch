@@ -32,6 +32,9 @@ app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', '806f4687241566d2a035411
 mongo_client = pymongo.MongoClient(MONGO_URI)
 mongo_db = mongo_client[MONGO_DB_NAME]
 
+from cmv_service import CMVService
+cmv_service = CMVService(mongo_db)
+
 bcrypt = Bcrypt(app)
 login_manager = LoginManager(app)
 login_manager.login_view = 'login'
@@ -2207,6 +2210,8 @@ def farmer_dashboard():
     # Low stock items: stock is set and <= 5
     low_stock_items = [item for item in produce_items if getattr(item, 'stock', None) is not None and item.stock <= 5]
     
+    cmv_summary = cmv_service.get_dashboard_summary(location='Bengaluru', farm_produce_items=produce_items)
+
     return render_template(
         'farmer_dashboard.html',
         farm=farm,
@@ -2218,8 +2223,128 @@ def farmer_dashboard():
         produce_count=len(produce_items),
         produce_items=produce_items,
         recent_orders=recent_orders,
-        low_stock_items=low_stock_items
+        low_stock_items=low_stock_items,
+        cmv_summary=cmv_summary
     )
+
+# --- Current Market Value (CMV) Routes ---
+
+@app.route('/api/cmv/summary')
+@farmer_required
+def api_cmv_summary():
+    """Returns CMV dashboard summary for selected location."""
+    loc = request.args.get('location', 'Bengaluru').strip()
+    farm = Farm.query.filter_by(user_id=current_user.id).first()
+    produce_items = farm.produce_items if farm else []
+    summary = cmv_service.get_dashboard_summary(location=loc, farm_produce_items=produce_items)
+    return jsonify(summary)
+
+@app.route('/api/cmv/category/<category_name>')
+@farmer_required
+def api_cmv_category(category_name):
+    """Returns list of products and mandi prices for a category."""
+    loc = request.args.get('location', 'Bengaluru').strip()
+    products = cmv_service.get_category_products(category_name, location=loc)
+    return jsonify({'category': category_name, 'location': loc, 'products': products})
+
+@app.route('/api/cmv/product/<commodity_name>')
+@farmer_required
+def api_cmv_product(commodity_name):
+    """Returns individual product price intelligence and historical trend data."""
+    loc = request.args.get('location', 'Bengaluru').strip()
+    try:
+        days = int(request.args.get('days', 30))
+    except (ValueError, TypeError):
+        days = 30
+    details = cmv_service.get_product_details(commodity_name, location=loc, days=days)
+    if not details:
+        return jsonify({'error': 'Product market data not found'}), 404
+    return jsonify(details)
+
+@app.route('/api/cmv/search')
+@farmer_required
+def api_cmv_search():
+    """Live search across commodities."""
+    q = request.args.get('q', '').strip()
+    loc = request.args.get('location', 'Bengaluru').strip()
+    results = cmv_service.search_commodities(q, location=loc)
+    return jsonify(results)
+
+@app.route('/api/cmv/sync', methods=['POST'])
+@farmer_required
+def api_cmv_sync():
+    """Triggers sync with external Agmarknet / data.gov.in data."""
+    data = request.get_json(silent=True) or {}
+    api_key = data.get('api_key')
+    result = cmv_service.sync_external_data(api_key=api_key)
+    return jsonify(result)
+
+@app.route('/farmer/market-prices')
+@farmer_required
+def cmv_overview():
+    """Redirects to default category market price page."""
+    loc = request.args.get('location', 'Bengaluru').strip()
+    return redirect(url_for('cmv_category_view', category_name='Fruits', location=loc))
+
+@app.route('/farmer/market-prices/<category_name>')
+@farmer_required
+def cmv_category_view(category_name):
+    """Dedicated category detail view matching screenshot UI."""
+    cat = category_name.capitalize()
+    if cat not in ['Vegetables', 'Fruits', 'Grains', 'Herbs', 'Dairy']:
+        cat = 'Fruits'
+    loc = request.args.get('location', 'Bengaluru').strip()
+    prod = request.args.get('product', '').strip() or None
+    tf = request.args.get('timeframe', 'week').strip().lower()
+    view_data = cmv_service.get_category_detailed_view(cat, location=loc, product_name=prod, timeframe=tf)
+    return render_template(
+        'cmv_category_detail.html',
+        data=view_data,
+        category_name=cat,
+        location=view_data['location'],
+        available_locations=view_data['available_locations'],
+        reporting_date=datetime.date.today().strftime('%Y-%m-%d')
+    )
+
+@app.route('/api/cmv/category-detail')
+@farmer_required
+def api_cmv_category_detail():
+    """Returns dynamic category detail payload for client-side city/product switching."""
+    cat = request.args.get('category', 'Fruits').strip().capitalize()
+    loc = request.args.get('location', 'Bengaluru').strip()
+    prod = request.args.get('product', '').strip() or None
+    tf = request.args.get('timeframe', 'week').strip().lower()
+    detail = cmv_service.get_category_detailed_view(cat, location=loc, product_name=prod, timeframe=tf)
+    return jsonify(detail)
+
+@app.route('/api/cmv/set-alert', methods=['POST'])
+@farmer_required
+def api_cmv_set_alert():
+    """Registers price alert for farmer."""
+    data = request.get_json(silent=True) or request.form or {}
+    commodity = data.get('commodity', 'Mango')
+    target_price = data.get('target_price')
+    location = data.get('location', 'Bengaluru')
+    
+    try:
+        t_price = float(target_price)
+    except (ValueError, TypeError):
+        return jsonify({'success': False, 'message': 'Please enter a valid target price in ₹.'}), 400
+
+    alert_doc = {
+        'user_id': current_user.id,
+        'user_email': current_user.email,
+        'commodity': commodity,
+        'target_price': t_price,
+        'location': location,
+        'created_at': datetime.datetime.now().isoformat(),
+        'status': 'ACTIVE'
+    }
+    mongo_db['price_alerts'].insert_one(alert_doc)
+    return jsonify({
+        'success': True,
+        'message': f"Price alert successfully set for {commodity} at ₹{int(t_price)}/Kg in {location}! You will be notified when market prices change."
+    })
 
 @app.route('/farmer/profile', methods=['GET', 'POST'])
 @farmer_required

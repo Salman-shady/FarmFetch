@@ -144,6 +144,7 @@
           </a>
           <a class="nav-link" href="#sect-produce"><i class="bi bi-basket2 text-success"></i> Produce Inventory</a>
           <a class="nav-link" href="#sect-chart"><i class="bi bi-bar-chart text-primary"></i> Sales Chart</a>
+          <a class="nav-link" href="#sect-current-market-value"> <i class="bi bi-graph-up-arrow text-success"></i> Current Market Value </a>
           <a class="nav-link" href="#sect-farm-profile"><i class="bi bi-gear"></i> Farm Settings</a>
           <hr class="my-2">
           <a class="nav-link" href="{{ url_for('farm_produce', farm_id=farm.id) }}" target="_blank"><i class="bi bi-eye"></i> Customer View</a>
@@ -388,6 +389,523 @@
       </p>
     </div>
 
+    <!-- ================================================================= -->
+    <!-- CURRENT MARKET VALUE (CMV) - FARMER DASHBOARD INTEGRATION -->
+    <!-- ================================================================= -->
+    <div id="sect-current-market-value" class="cmv-dashboard-wrapper mb-4">
+      
+      <!-- Top Header Banner matching reference screenshot -->
+      <div class="cmv-header-banner">
+        <div>
+          <div class="cmv-title">Current Market Value (CMV)</div>
+          <div class="cmv-subtitle">
+            <span class="pulse-live"></span> Live Market Prices &bull; <span id="cmvHeaderLocationText">{{ cmv_summary.location }}</span>
+          </div>
+        </div>
+
+        <div class="d-flex align-items-center flex-wrap gap-2">
+          <!-- Location Dropdown Selector -->
+          <div class="dropdown">
+            <button class="cmv-location-btn dropdown-toggle" type="button" id="cmvLocationDropdownBtn" data-bs-toggle="dropdown" aria-expanded="false">
+              <i class="bi bi-geo-alt-fill text-danger"></i>
+              <span id="cmvSelectedLocationLabel">{{ cmv_summary.location }}</span>
+              <i class="bi bi-chevron-down ms-1 text-muted small"></i>
+            </button>
+            <ul class="dropdown-menu dropdown-menu-end shadow-sm rounded-3 py-2 border-0" aria-labelledby="cmvLocationDropdownBtn" style="min-width: 200px;">
+              <li><h6 class="dropdown-header text-uppercase small fw-bold">Select APMC Mandi</h6></li>
+              {% for loc in cmv_summary.available_locations %}
+              <li>
+                <a class="dropdown-item py-2 d-flex align-items-center justify-content-between {% if loc == cmv_summary.location %}active bg-success text-white fw-bold{% endif %}" href="javascript:void(0)" onclick="cmvChangeLocation('{{ loc }}')">
+                  <span><i class="bi bi-geo-alt me-2"></i>{{ loc }}</span>
+                  {% if loc == 'Bengaluru' %}<span class="badge bg-light text-dark small" style="font-size:0.68rem;">Capital</span>{% endif %}
+                </a>
+              </li>
+              {% endfor %}
+            </ul>
+          </div>
+
+          <!-- Product Search Input with Live Dropdown -->
+          <div class="cmv-search-box">
+            <i class="bi bi-search"></i>
+            <input type="text" id="cmvSearchInput" placeholder="Search items (e.g., Tomato, Milk...)" autocomplete="off">
+            <div id="cmvSearchDropdown" class="cmv-search-dropdown"></div>
+          </div>
+
+          <!-- Price Alerts Notification Bell -->
+          <button class="cmv-icon-btn" type="button" data-bs-toggle="modal" data-bs-target="#cmvNotificationModal" title="Market Price Alerts">
+            <i class="bi bi-bell"></i>
+            <span class="cmv-badge-dot"></span>
+          </button>
+
+          <!-- External Sync Modal Button -->
+          <button class="cmv-icon-btn" type="button" data-bs-toggle="modal" data-bs-target="#cmvSyncModal" title="AGMARKNET Data Sync & API Info">
+            <i class="bi bi-arrow-repeat"></i>
+          </button>
+
+          <!-- Farmer Profile Avatar -->
+          <div class="cmv-avatar-btn" title="{{ farm.name }} • Farmer Profile">
+            <i class="bi bi-person"></i>
+          </div>
+        </div>
+      </div>
+
+      <!-- Five Main Category Cards in 1 Row (Desktop) -->
+      <div class="cmv-five-cards-row" id="cmvCategoryCardsRow">
+        {% for cat in cmv_summary.categories %}
+        <div class="cmv-card cmv-card-{{ cat.name|lower }} {% if loop.first %}active-cat{% endif %}" id="cmvCard-{{ cat.name }}" data-category="{{ cat.name }}">
+          
+          <!-- Percentage trend badge matching screenshot -->
+          {% if cat.change_pct > 0 %}
+          <span class="cmv-card-trend-badge text-success bg-white border border-success-subtle">
+            {{ cat.change_display }}
+          </span>
+          {% elif cat.change_pct < 0 %}
+          <span class="cmv-card-trend-badge text-danger bg-white border border-danger-subtle">
+            {{ cat.change_display }}
+          </span>
+          {% else %}
+          <span class="cmv-card-trend-badge text-muted bg-white border">
+            {{ cat.change_display }}
+          </span>
+          {% endif %}
+
+          <!-- Realistic Agricultural Product Image -->
+          <div class="cmv-card-img-wrap">
+            <img src="{{ cat.image_url }}" alt="{{ cat.name }}" class="cmv-card-img" loading="lazy">
+          </div>
+
+          <!-- Category Name -->
+          <div class="cmv-card-title">{{ cat.name }}</div>
+
+          <!-- Average Available Market Price (calculated from valid comparable available records) -->
+          <div class="cmv-card-price" id="cmvAvgPriceText-{{ cat.name }}">
+            {{ cat.avg_price_display }} {{ cat.unit_display }}
+          </div>
+
+          <!-- View More Button -->
+          <a href="{{ url_for('cmv_category_view', category_name=cat.name) }}?location={{ cmv_summary.location }}" 
+             class="cmv-card-btn" 
+             data-category="{{ cat.name }}"
+             onclick="window.location.href = this.href.split('?')[0] + '?location=' + encodeURIComponent(cmvCurrentLocation); return false;">
+            View More <i class="bi bi-arrow-right"></i>
+          </a>
+        </div>
+        {% endfor %}
+      </div>
+
+      <!-- Today's Market Highlights Ticker matching screenshot -->
+      <div class="cmv-highlights-bar">
+        <div class="cmv-highlights-pill">
+          <i class="bi bi-megaphone-fill text-warning"></i> Today's Market Highlights
+        </div>
+        <div class="cmv-ticker-wrap">
+          <div class="cmv-ticker-track" id="cmvTickerTrack">
+            {% for h in cmv_summary.highlights %}
+            <span class="cmv-ticker-item">
+              {% if h.trend == 'up' and ('Nandini' in h.text or 'Milk' in h.text) %}
+              <span class="text-danger fw-bold">{{ h.text }}</span>
+              {% elif h.trend == 'up' %}
+              <span class="text-success">{{ h.text }}</span>
+              {% elif h.trend == 'down' %}
+              <span class="text-danger">{{ h.text }}</span>
+              {% else %}
+              <span>{{ h.text }}</span>
+              {% endif %}
+            </span>
+            {% endfor %}
+            <!-- Duplicate for seamless infinite loop -->
+            {% for h in cmv_summary.highlights %}
+            <span class="cmv-ticker-item">
+              {% if h.trend == 'up' and ('Nandini' in h.text or 'Milk' in h.text) %}
+              <span class="text-danger fw-bold">{{ h.text }}</span>
+              {% elif h.trend == 'up' %}
+              <span class="text-success">{{ h.text }}</span>
+              {% elif h.trend == 'down' %}
+              <span class="text-danger">{{ h.text }}</span>
+              {% else %}
+              <span>{{ h.text }}</span>
+              {% endif %}
+            </span>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+
+      <!-- Interactive Category Detail & Individual Product Price Chart Section -->
+      <div class="dashboard-card p-3 mb-4 border">
+        
+        <!-- Category Switching Filter Pills -->
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 pb-3 mb-3 border-bottom">
+          <div class="d-flex align-items-center gap-2 flex-wrap">
+            <span class="fw-bold text-dark small text-uppercase"><i class="bi bi-funnel me-1"></i>Filter Products:</span>
+            <div class="btn-group btn-group-sm rounded-pill p-1 bg-light border" id="cmvCategoryTabs">
+              {% for cat in ['Vegetables', 'Fruits', 'Grains', 'Herbs', 'Dairy'] %}
+              <button type="button" class="btn btn-sm rounded-pill cmv-tab-btn {% if loop.first %}btn-success active{% else %}btn-light{% endif %}" onclick="cmvSelectCategory('{{ cat }}')">
+                {{ cat }}
+              </button>
+              {% endfor %}
+            </div>
+          </div>
+          <div class="d-flex align-items-center gap-2">
+            <a href="{{ url_for('cmv_category_view', category_name='Vegetables') }}" id="cmvDedicatedPageLink" class="btn btn-outline-success btn-sm rounded-pill">
+              <i class="bi bi-box-arrow-up-right me-1"></i> Open Full Category Page
+            </a>
+          </div>
+        </div>
+
+        <!-- Available Products Quick-Select Bar -->
+        <div class="mb-3">
+          <div class="small fw-bold text-muted mb-2 d-flex align-items-center justify-content-between">
+            <span>Select Product to Analyze Price Trends:</span>
+            <span id="cmvProductCountBadge" class="badge bg-success-subtle text-success border border-success-subtle rounded-pill">Loading products...</span>
+          </div>
+          <div class="d-flex gap-2 flex-wrap" id="cmvProductChipsContainer">
+            <!-- Populated via JavaScript dynamically -->
+          </div>
+        </div>
+
+        <!-- Individual Product Price Chart -->
+        <div class="p-3 rounded-3 border bg-light mb-3">
+          <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+            <div>
+              <div class="d-flex align-items-center gap-2">
+                <h5 class="fw-bold text-dark mb-0" id="cmvChartProductTitle">Tomato</h5>
+                <span class="badge bg-success text-white rounded-pill" id="cmvChartUnitBadge">per kg</span>
+                <span class="trend-pill trend-up" id="cmvChartTrendBadge"><i class="bi bi-arrow-up-right"></i> +8.0%</span>
+              </div>
+              <div class="text-muted small mt-1">
+                <i class="bi bi-geo-alt text-danger me-1"></i><span id="cmvChartMandiName">Binny Mill (F&V) Mandi, Bengaluru</span>
+                &bull; <span id="cmvChartDateText">Reported: Today</span>
+              </div>
+            </div>
+
+            <!-- Historical Timeframe Toggles: 7, 30, 90 Days -->
+            <div class="btn-group btn-group-sm rounded-pill p-1 bg-white border shadow-sm">
+              <button type="button" class="btn btn-sm rounded-pill cmv-days-btn" data-days="7" onclick="cmvSetTimeRange(7, this)">7 Days</button>
+              <button type="button" class="btn btn-sm rounded-pill cmv-days-btn btn-success active" data-days="30" onclick="cmvSetTimeRange(30, this)">30 Days</button>
+              <button type="button" class="btn btn-sm rounded-pill cmv-days-btn" data-days="90" onclick="cmvSetTimeRange(90, this)">90 Days</button>
+            </div>
+          </div>
+
+          <!-- Key Financial Metric Cards -->
+          <div class="row g-2 mb-3">
+            <div class="col-sm-3 col-6">
+              <div class="p-2 rounded-2 bg-white border text-center">
+                <div class="text-muted small" style="font-size:0.75rem;">Modal (Trading) Price</div>
+                <div class="fw-bold text-dark fs-5" id="cmvMetricModal">₹28.00</div>
+              </div>
+            </div>
+            <div class="col-sm-3 col-6">
+              <div class="p-2 rounded-2 bg-white border text-center">
+                <div class="text-muted small" style="font-size:0.75rem;">Minimum Mandi Price</div>
+                <div class="fw-bold text-muted fs-6" id="cmvMetricMin">₹22.00</div>
+              </div>
+            </div>
+            <div class="col-sm-3 col-6">
+              <div class="p-2 rounded-2 bg-white border text-center">
+                <div class="text-muted small" style="font-size:0.75rem;">Maximum Mandi Price</div>
+                <div class="fw-bold text-muted fs-6" id="cmvMetricMax">₹34.00</div>
+              </div>
+            </div>
+            <div class="col-sm-3 col-6">
+              <div class="p-2 rounded-2 bg-white border text-center">
+                <div class="text-muted small" style="font-size:0.75rem;">APMC Spread Range</div>
+                <div class="fw-bold text-primary fs-6" id="cmvMetricSpread">₹12.00 / kg</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Interactive Line Chart Canvas -->
+          <div style="height: 280px; position: relative;">
+            <canvas id="cmvProductInteractiveChart"></canvas>
+          </div>
+
+          <div class="d-flex justify-content-between align-items-center text-muted small mt-2 pt-2 border-top">
+            <span id="cmvChartSourceLabel"><i class="bi bi-shield-check text-success me-1"></i>Verified AGMARKNET / DMI Bulletin</span>
+            <span class="text-muted"><i class="bi bi-info-circle me-1"></i>Financial chart updates automatically when product or location changes.</span>
+          </div>
+        </div>
+
+        <!-- Regional Mandi Cross-Comparison for Selected Product -->
+        <div class="border rounded-3 p-3 bg-white">
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <h6 class="fw-bold text-dark mb-0">
+              <i class="bi bi-arrow-left-right text-primary me-1"></i> Multi-Mandi Price Comparison for <span id="cmvCompareTitle">Tomato</span>
+            </h6>
+            <span class="badge bg-light text-muted border small">Real APMC Quotes</span>
+          </div>
+          <div class="table-responsive">
+            <table class="table table-sm table-custom align-middle mb-0">
+              <thead>
+                <tr>
+                  <th>Location / District</th>
+                  <th>Mandi / Yard Name</th>
+                  <th class="text-end">Modal Price</th>
+                  <th class="text-end">Min / Max Range</th>
+                  <th class="text-end">vs Bengaluru Benchmark</th>
+                </tr>
+              </thead>
+              <tbody id="cmvMandiCompareTableBody">
+                <!-- Populated dynamically via JS -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Additional Dashboard Sections: Gainers, Fallers, Recent Updates -->
+      <div class="row g-3 mb-4">
+        
+        <!-- Top Price Increases (Gainers) -->
+        <div class="col-md-6 col-xl-4">
+          <div class="dashboard-card p-3 h-100">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+              <h6 class="fw-bold text-success mb-0">
+                <i class="bi bi-graph-up-arrow me-1"></i> Top Price Increases
+              </h6>
+              <span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill">Mandi Gainers</span>
+            </div>
+            <div class="d-flex flex-column gap-2" id="cmvGainersList">
+              {% for g in cmv_summary.top_gainers %}
+              <div class="d-flex justify-content-between align-items-center p-2 rounded-2 border bg-light cursor-pointer" onclick="cmvSelectProduct('{{ g.commodity }}')">
+                <div>
+                  <div class="fw-bold text-dark small">{{ g.commodity }}</div>
+                  <div class="text-muted" style="font-size:0.75rem;">{{ g.market }}</div>
+                </div>
+                <div class="text-end">
+                  <div class="fw-bold text-dark small">{{ g.price_display }} <span class="text-muted" style="font-size:0.75rem;">{{ g.unit_display }}</span></div>
+                  <span class="badge bg-success text-white" style="font-size:0.7rem;">+{{ "%.1f"|format(g.price_change_pct) }}%</span>
+                </div>
+              </div>
+              {% endfor %}
+            </div>
+          </div>
+        </div>
+
+        <!-- Top Price Decreases (Fallers) -->
+        <div class="col-md-6 col-xl-4">
+          <div class="dashboard-card p-3 h-100">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+              <h6 class="fw-bold text-danger mb-0">
+                <i class="bi bi-graph-down-arrow me-1"></i> Top Price Decreases
+              </h6>
+              <span class="badge bg-danger-subtle text-danger border border-danger-subtle rounded-pill">Mandi Fallers</span>
+            </div>
+            <div class="d-flex flex-column gap-2" id="cmvFallersList">
+              {% for f in cmv_summary.top_fallers %}
+              <div class="d-flex justify-content-between align-items-center p-2 rounded-2 border bg-light cursor-pointer" onclick="cmvSelectProduct('{{ f.commodity }}')">
+                <div>
+                  <div class="fw-bold text-dark small">{{ f.commodity }}</div>
+                  <div class="text-muted" style="font-size:0.75rem;">{{ f.market }}</div>
+                </div>
+                <div class="text-end">
+                  <div class="fw-bold text-dark small">{{ f.price_display }} <span class="text-muted" style="font-size:0.75rem;">{{ f.unit_display }}</span></div>
+                  <span class="badge bg-danger text-white" style="font-size:0.7rem;">{{ "%.1f"|format(f.price_change_pct) }}%</span>
+                </div>
+              </div>
+              {% endfor %}
+            </div>
+          </div>
+        </div>
+
+        <!-- Recently Updated Products -->
+        <div class="col-md-12 col-xl-4">
+          <div class="dashboard-card p-3 h-100">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+              <h6 class="fw-bold text-primary mb-0">
+                <i class="bi bi-clock-history me-1"></i> Recently Updated
+              </h6>
+              <span class="badge bg-primary-subtle text-primary border border-primary-subtle rounded-pill">Daily Feed</span>
+            </div>
+            <div class="d-flex flex-column gap-2" id="cmvRecentList">
+              {% for r in cmv_summary.recent_updates[:5] %}
+              <div class="d-flex justify-content-between align-items-center p-2 rounded-2 border bg-light cursor-pointer" onclick="cmvSelectProduct('{{ r.commodity }}')">
+                <div>
+                  <div class="fw-bold text-dark small">{{ r.commodity }}</div>
+                  <div class="text-muted" style="font-size:0.75rem;">{{ r.category }} &bull; {{ r.reporting_date }}</div>
+                </div>
+                <div class="text-end">
+                  <div class="fw-bold text-dark small">{{ r.price_display }}</div>
+                  <span class="text-muted" style="font-size:0.72rem;">{{ r.unit_display }}</span>
+                </div>
+              </div>
+              {% endfor %}
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Farmer's Own Crop Price Compared with Market Reference Benchmark -->
+      <div class="dashboard-card p-3 border mb-2">
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+          <div>
+            <h6 class="fw-bold text-dark mb-0">
+              <i class="bi bi-clipboard2-pulse text-success me-1"></i> Your Produce Price vs. APMC Market Reference Benchmark
+            </h6>
+            <div class="text-muted small">Automatic matching of your farm inventory items with current APMC market prices.</div>
+          </div>
+          <a href="{{ url_for('manage_produce') }}" class="btn btn-outline-primary btn-sm rounded-pill">
+            <i class="bi bi-sliders me-1"></i> Adjust Your Selling Prices
+          </a>
+        </div>
+
+        {% if cmv_summary.farmer_comparisons %}
+        <div class="table-responsive">
+          <table class="table table-sm table-custom align-middle mb-0">
+            <thead>
+              <tr>
+                <th>Your Produce Item</th>
+                <th class="text-end">Your Listed Price</th>
+                <th class="text-end">APMC Benchmark ({{ cmv_summary.location }})</th>
+                <th class="text-end">Variance Difference</th>
+                <th class="text-center">Status</th>
+                <th>Pricing Intelligence & Recommendation</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for fc in cmv_summary.farmer_comparisons %}
+              <tr>
+                <td>
+                  <div class="fw-bold text-dark">{{ fc.item_name }}</div>
+                  <div class="text-muted small">Matched: {{ fc.market_commodity }}</div>
+                </td>
+                <td class="text-end fw-bold">
+                  {{ fc.farmer_price_display }} <span class="text-muted small">/ {{ fc.farmer_unit }}</span>
+                </td>
+                <td class="text-end fw-bold text-success">
+                  {{ fc.market_price_display }} <span class="text-muted small">/ {{ fc.market_unit }}</span>
+                </td>
+                <td class="text-end">
+                  {% if fc.diff > 0 %}
+                  <span class="text-warning fw-bold">+₹{{ "%.2f"|format(fc.diff) }} (+{{ fc.diff_pct }}%)</span>
+                  {% elif fc.diff < 0 %}
+                  <span class="text-danger fw-bold">-₹{{ "%.2f"|format(fc.diff|abs) }} ({{ fc.diff_pct }}%)</span>
+                  {% else %}
+                  <span class="text-muted fw-bold">₹0.00 (0.0%)</span>
+                  {% endif %}
+                </td>
+                <td class="text-center">
+                  {% if fc.status == 'competitive' %}
+                  <span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill">Competitive</span>
+                  {% elif fc.status == 'lower' %}
+                  <span class="badge bg-danger-subtle text-danger border border-danger-subtle rounded-pill">Underpriced</span>
+                  {% else %}
+                  <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle rounded-pill">Premium Margin</span>
+                  {% endif %}
+                </td>
+                <td class="small text-muted">
+                  {{ fc.recommendation }}
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% else %}
+        <div class="text-center py-4 text-muted">
+          <i class="bi bi-basket3 fs-2 d-block mb-2"></i>
+          <p class="small mb-1">Add items to your produce inventory to see automatic market price comparisons and recommendations.</p>
+          <a href="{{ url_for('manage_produce') }}" class="btn btn-outline-success btn-sm rounded-pill mt-2">
+            <i class="bi bi-plus-circle me-1"></i> Add Produce Items
+          </a>
+        </div>
+        {% endif %}
+
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 text-muted small mt-3 pt-2 border-top">
+          <div>
+            <i class="bi bi-info-circle me-1"></i> Reporting Date: <strong>{{ cmv_summary.reporting_date }}</strong> &bull; Data Freshness: <strong>{{ cmv_summary.data_freshness }}</strong>
+          </div>
+          <div>
+            Source: <a href="https://data.gov.in/resource/current-daily-price-various-commodities-various-markets-mandi" target="_blank" class="text-decoration-none text-success">AGMARKNET (agmarknet.gov.in)</a> &amp; KMF Nandini Tariffs
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- CMV Notification Alerts Modal -->
+    <div class="modal fade" id="cmvNotificationModal" tabindex="-1" aria-labelledby="cmvNotificationModalLabel" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow rounded-4">
+          <div class="modal-header border-bottom pb-3">
+            <h5 class="modal-title fw-bold text-dark d-flex align-items-center gap-2" id="cmvNotificationModalLabel">
+              <i class="bi bi-bell-fill text-warning"></i> Live Market Price Alerts
+            </h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body p-3">
+            <div class="d-flex flex-column gap-3">
+              <div class="p-3 rounded-3 bg-danger-subtle border border-danger-subtle">
+                <div class="d-flex align-items-center justify-content-between mb-1">
+                  <span class="badge bg-danger text-white rounded-pill">Official Tariff Revision</span>
+                  <span class="text-muted small">Today</span>
+                </div>
+                <div class="fw-bold text-dark">Nandini Milk (KMF) Retail Price Revision</div>
+                <p class="small text-muted mb-0 mt-1">Karnataka Milk Federation (KMF) revised toned milk procurement and retail pricing to <strong>₹54/L (+17.4%)</strong> across all Bengaluru and Karnataka distributors.</p>
+              </div>
+
+              <div class="p-3 rounded-3 bg-success-subtle border border-success-subtle">
+                <div class="d-flex align-items-center justify-content-between mb-1">
+                  <span class="badge bg-success text-white rounded-pill">Mandi Surge</span>
+                  <span class="text-muted small">Today</span>
+                </div>
+                <div class="fw-bold text-dark">Tomato Prices Up by +8.0% in Binny Mill Mandi</div>
+                <p class="small text-muted mb-0 mt-1">Modal prices reached <strong>₹28/kg</strong> due to rain impact on fresh arrivals from Kolar and Chikkaballapur farm belts.</p>
+              </div>
+
+              <div class="p-3 rounded-3 bg-light border">
+                <div class="d-flex align-items-center justify-content-between mb-1">
+                  <span class="badge bg-secondary text-white rounded-pill">Supply Update</span>
+                  <span class="text-muted small">Yesterday</span>
+                </div>
+                <div class="fw-bold text-dark">Onion Wholesale Prices Eased (-4.2%)</div>
+                <p class="small text-muted mb-0 mt-1">New crop arrivals in Yeshwanthpur APMC lowered modal onion rates to <strong>₹34/kg</strong>.</p>
+              </div>
+            </div>
+          </div>
+          <div class="modal-footer border-0 pt-0">
+            <button type="button" class="btn btn-secondary btn-sm rounded-pill px-3" data-bs-dismiss="modal">Close</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- CMV Data Sync & API Info Modal -->
+    <div class="modal fade" id="cmvSyncModal" tabindex="-1" aria-labelledby="cmvSyncModalLabel" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow rounded-4">
+          <div class="modal-header border-bottom pb-3">
+            <h5 class="modal-title fw-bold text-dark d-flex align-items-center gap-2" id="cmvSyncModalLabel">
+              <i class="bi bi-arrow-repeat text-success"></i> AGMARKNET Data Sync &amp; API
+            </h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body p-3">
+            <p class="small text-muted mb-3">
+              Market prices are verified from <strong>AGMARKNET</strong> (Directorate of Marketing &amp; Inspection, GoI) and official dairy tariffs (KMF). Data is cached in MongoDB for instant performance.
+            </p>
+            <div class="mb-3 p-3 rounded-3 bg-light border">
+              <div class="small text-muted mb-1">Optional data.gov.in API Key:</div>
+              <input type="text" id="cmvApiKeyInput" class="form-control form-control-sm rounded-pill" placeholder="Enter custom API key if available">
+              <div class="form-text" style="font-size:0.75rem;">Leave empty to inspect live connection or refresh MongoDB cache.</div>
+            </div>
+            <div id="cmvSyncResult" class="d-none alert py-2 small mb-0"></div>
+          </div>
+          <div class="modal-footer border-0 pt-0">
+            <button type="button" class="btn btn-secondary btn-sm rounded-pill" data-bs-dismiss="modal">Close</button>
+            <button type="button" class="btn btn-success btn-sm rounded-pill px-3" id="cmvTriggerSyncBtn" onclick="cmvPerformSync()">
+              <i class="bi bi-cloud-arrow-down me-1"></i> Sync Latest Mandi Data
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <!-- ================================================================= -->
+    <!-- END CURRENT MARKET VALUE (CMV) SECTION -->
+    <!-- ================================================================= -->
+
     <div id="sect-farm-profile" class="dashboard-card mb-4">
       <div class="section-hdr">
         <h5><i class="bi bi-gear text-dark"></i> Farm Settings</h5>
@@ -446,14 +964,33 @@
   'use strict';
 
   function init() {
-    // Sidebar smooth scroll
+    // Sidebar smooth scroll and active highlighting
     document.querySelectorAll('.nav-pills-dash .nav-link[href^="#"]').forEach(function(link) {
       link.addEventListener('click', function(e) {
         e.preventDefault();
-        var el = document.getElementById(link.getAttribute('href').slice(1));
+        document.querySelectorAll('.nav-pills-dash .nav-link').forEach(function(l) { l.classList.remove('active'); });
+        link.classList.add('active');
+        var targetId = link.getAttribute('href').slice(1);
+        var el = document.getElementById(targetId);
         if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        history.replaceState(null, null, '#' + targetId);
       });
     });
+
+    // Check URL hash on page load
+    if (window.location.hash) {
+      var hashLink = document.querySelector('.nav-pills-dash .nav-link[href="' + window.location.hash + '"]');
+      if (hashLink) {
+        document.querySelectorAll('.nav-pills-dash .nav-link').forEach(function(l) { l.classList.remove('active'); });
+        hashLink.classList.add('active');
+        var targetSection = document.getElementById(window.location.hash.slice(1));
+        if (targetSection) {
+          setTimeout(function() {
+            targetSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          }, 200);
+        }
+      }
+    }
 
     // Produce search filter
     var searchInput = document.getElementById('produce-search-input');
@@ -532,6 +1069,499 @@
         banner.classList.add('d-flex');
       }
     });
+
+    // =========================================================================
+    // CURRENT MARKET VALUE (CMV) INTERACTIVE LOGIC & FINANCIAL CHARTING
+    // =========================================================================
+    var cmvCurrentLocation = "{{ cmv_summary.location if cmv_summary else 'Bengaluru' }}";
+    var cmvCurrentCategory = 'Vegetables';
+    var cmvCurrentProduct = 'Tomato';
+    var cmvCurrentDays = 30;
+    var cmvChartInstance = null;
+
+    window.cmvChangeLocation = function(newLoc) {
+      cmvCurrentLocation = newLoc;
+      
+      // Update UI labels
+      var headerLoc = document.getElementById('cmvHeaderLocationText');
+      if (headerLoc) headerLoc.innerText = newLoc;
+      var selLabel = document.getElementById('cmvSelectedLocationLabel');
+      if (selLabel) selLabel.innerText = newLoc;
+
+      // Update dropdown active class
+      document.querySelectorAll('#sect-current-market-value .dropdown-menu .dropdown-item').forEach(function(item) {
+        if (item.innerText.indexOf(newLoc) >= 0) {
+          item.classList.add('active', 'bg-success', 'text-white', 'fw-bold');
+        } else {
+          item.classList.remove('active', 'bg-success', 'text-white', 'fw-bold');
+        }
+      });
+
+      // Update dedicated page link
+      var dedLink = document.getElementById('cmvDedicatedPageLink');
+      if (dedLink) {
+        dedLink.href = '/farmer/market-prices/' + encodeURIComponent(cmvCurrentCategory) + '?location=' + encodeURIComponent(newLoc);
+      }
+
+      // Fetch updated summary
+      fetch('/api/cmv/summary?location=' + encodeURIComponent(newLoc))
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+          if (!data) return;
+
+          // Update Category Card Prices & Trends
+          (data.categories || []).forEach(function(cat) {
+            var priceEl = document.getElementById('cmvAvgPriceText-' + cat.name);
+            if (priceEl) priceEl.innerText = cat.avg_price_display + ' ' + cat.unit_display;
+
+            var cardEl = document.getElementById('cmvCard-' + cat.name);
+            if (cardEl) {
+              var badgeEl = cardEl.querySelector('.cmv-card-trend-badge');
+              if (badgeEl) {
+                badgeEl.innerText = cat.change_display;
+                badgeEl.className = 'cmv-card-trend-badge bg-white border ' + 
+                  (cat.change_pct > 0 ? 'text-success border-success-subtle' : (cat.change_pct < 0 ? 'text-danger border-danger-subtle' : 'text-muted'));
+              }
+            }
+          });
+
+          // Update Ticker
+          var tickerTrack = document.getElementById('cmvTickerTrack');
+          if (tickerTrack && data.highlights) {
+            var html = '';
+            var renderItems = function(list) {
+              list.forEach(function(h) {
+                var cls = (h.trend === 'up' && (h.text.indexOf('Nandini') >= 0 || h.text.indexOf('Milk') >= 0)) ? 'text-danger fw-bold' : 
+                          (h.trend === 'up' ? 'text-success' : (h.trend === 'down' ? 'text-danger' : ''));
+                html += '<span class="cmv-ticker-item"><span class="' + cls + '">' + h.text + '</span></span>';
+              });
+            };
+            renderItems(data.highlights);
+            renderItems(data.highlights); // Duplicate for infinite loop
+            tickerTrack.innerHTML = html;
+          }
+
+          // Update Gainers & Fallers
+          var gainersContainer = document.getElementById('cmvGainersList');
+          if (gainersContainer && data.top_gainers) {
+            var gHtml = '';
+            data.top_gainers.forEach(function(g) {
+              gHtml += '<div class="d-flex justify-content-between align-items-center p-2 rounded-2 border bg-light cursor-pointer" onclick="cmvSelectProduct(\'' + g.commodity + '\')">' +
+                '<div><div class="fw-bold text-dark small">' + g.commodity + '</div><div class="text-muted" style="font-size:0.75rem;">' + g.market + '</div></div>' +
+                '<div class="text-end"><div class="fw-bold text-dark small">' + g.price_display + ' <span class="text-muted" style="font-size:0.75rem;">' + g.unit_display + '</span></div>' +
+                '<span class="badge bg-success text-white" style="font-size:0.7rem;">+' + g.price_change_pct.toFixed(1) + '%</span></div></div>';
+            });
+            gainersContainer.innerHTML = gHtml;
+          }
+
+          var fallersContainer = document.getElementById('cmvFallersList');
+          if (fallersContainer && data.top_fallers) {
+            var fHtml = '';
+            data.top_fallers.forEach(function(f) {
+              fHtml += '<div class="d-flex justify-content-between align-items-center p-2 rounded-2 border bg-light cursor-pointer" onclick="cmvSelectProduct(\'' + f.commodity + '\')">' +
+                '<div><div class="fw-bold text-dark small">' + f.commodity + '</div><div class="text-muted" style="font-size:0.75rem;">' + f.market + '</div></div>' +
+                '<div class="text-end"><div class="fw-bold text-dark small">' + f.price_display + ' <span class="text-muted" style="font-size:0.75rem;">' + f.unit_display + '</span></div>' +
+                '<span class="badge bg-danger text-white" style="font-size:0.7rem;">' + f.price_change_pct.toFixed(1) + '%</span></div></div>';
+            });
+            fallersContainer.innerHTML = fHtml;
+          }
+
+          // Reload Category Products & Active Product Chart for new location
+          cmvLoadCategoryProducts(cmvCurrentCategory, cmvCurrentLocation, true);
+        })
+        .catch(function(err) {
+          console.error('Error updating location:', err);
+        });
+    };
+
+    window.cmvSelectCategory = function(category, event) {
+      if (event) {
+        event.preventDefault(); // Stay inside dashboard and smoothly expand explorer
+      }
+      cmvCurrentCategory = category;
+
+      // Update active state in category cards
+      document.querySelectorAll('#cmvCategoryCardsRow .cmv-card').forEach(function(c) {
+        c.classList.remove('active-cat');
+      });
+      var activeCard = document.getElementById('cmvCard-' + category);
+      if (activeCard) activeCard.classList.add('active-cat');
+
+      // Update tab buttons
+      document.querySelectorAll('#cmvCategoryTabs button').forEach(function(btn) {
+        if (btn.innerText.trim() === category) {
+          btn.classList.remove('btn-light');
+          btn.classList.add('btn-success', 'active');
+        } else {
+          btn.classList.remove('btn-success', 'active');
+          btn.classList.add('btn-light');
+        }
+      });
+
+      // Update dedicated page link
+      var dedLink = document.getElementById('cmvDedicatedPageLink');
+      if (dedLink) {
+        dedLink.href = '/farmer/market-prices/' + encodeURIComponent(category) + '?location=' + encodeURIComponent(cmvCurrentLocation);
+        dedLink.innerHTML = '<i class="bi bi-box-arrow-up-right me-1"></i> Open Full ' + category + ' Page';
+      }
+
+      cmvLoadCategoryProducts(category, cmvCurrentLocation, false);
+    };
+
+    function cmvLoadCategoryProducts(cat, loc, retainProduct) {
+      fetch('/api/cmv/category/' + encodeURIComponent(cat) + '?location=' + encodeURIComponent(loc))
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+          var container = document.getElementById('cmvProductChipsContainer');
+          var countBadge = document.getElementById('cmvProductCountBadge');
+          var products = data.products || [];
+
+          if (countBadge) countBadge.innerText = products.length + ' Available in ' + loc;
+
+          if (!container) return;
+          if (products.length === 0) {
+            container.innerHTML = '<div class="text-muted small">No verified products found for this category in ' + loc + '.</div>';
+            return;
+          }
+
+          var html = '';
+          var foundCurrent = false;
+          products.forEach(function(p, idx) {
+            if (p.commodity === cmvCurrentProduct) foundCurrent = true;
+            html += '<button type="button" class="btn btn-sm rounded-pill cmv-chip-btn ' + 
+              (p.commodity === cmvCurrentProduct ? 'btn-primary' : 'btn-outline-secondary') + 
+              '" data-comm="' + p.commodity + '" onclick="cmvSelectProduct(\'' + p.commodity + '\')">' +
+              p.commodity + ' <span class="fw-bold ms-1" style="font-size:0.75rem;">' + p.price_display + p.unit_display + '</span>' +
+              '</button>';
+          });
+          container.innerHTML = html;
+
+          if (!retainProduct || !foundCurrent) {
+            cmvSelectProduct(products[0].commodity);
+          } else {
+            cmvSelectProduct(cmvCurrentProduct);
+          }
+        })
+        .catch(function(err) {
+          console.error('Error loading category products:', err);
+        });
+    }
+
+    window.cmvSelectProduct = function(commodity) {
+      cmvCurrentProduct = commodity;
+
+      // Update chips button active styles
+      document.querySelectorAll('#cmvProductChipsContainer .cmv-chip-btn').forEach(function(btn) {
+        if (btn.getAttribute('data-comm') === commodity) {
+          btn.classList.remove('btn-outline-secondary');
+          btn.classList.add('btn-primary');
+        } else {
+          btn.classList.remove('btn-primary');
+          btn.classList.add('btn-outline-secondary');
+        }
+      });
+
+      cmvRenderInteractiveChart(cmvCurrentProduct, cmvCurrentLocation, cmvCurrentDays);
+    };
+
+    window.cmvSetTimeRange = function(days, btn) {
+      cmvCurrentDays = days;
+      document.querySelectorAll('.cmv-days-btn').forEach(function(b) {
+        b.classList.remove('btn-success', 'active');
+        b.classList.add('btn-light');
+      });
+      if (btn) {
+        btn.classList.remove('btn-light');
+        btn.classList.add('btn-success', 'active');
+      }
+      cmvRenderInteractiveChart(cmvCurrentProduct, cmvCurrentLocation, cmvCurrentDays);
+    };
+
+    function cmvRenderInteractiveChart(comm, loc, days) {
+      fetch('/api/cmv/product/' + encodeURIComponent(comm) + '?location=' + encodeURIComponent(loc) + '&days=' + days)
+        .then(function(r) { return r.json(); })
+        .then(function(res) {
+          if (!res || !res.commodity) return;
+
+          // Update Chart Headers & Metric Badges
+          document.getElementById('cmvChartProductTitle').innerText = res.commodity;
+          document.getElementById('cmvChartUnitBadge').innerText = res.unit_display || res.unit;
+          
+          var trendBadge = document.getElementById('cmvChartTrendBadge');
+          var pct = res.price_change_pct || 0;
+          if (trendBadge) {
+            trendBadge.className = 'trend-pill ' + (pct > 0 ? 'trend-up' : (pct < 0 ? 'trend-down' : 'trend-stable'));
+            trendBadge.innerHTML = (pct > 0 ? '<i class="bi bi-arrow-up-right"></i> +' : (pct < 0 ? '<i class="bi bi-arrow-down-right"></i> ' : '<i class="bi bi-dash"></i> ')) + pct.toFixed(1) + '%';
+          }
+
+          document.getElementById('cmvChartMandiName').innerText = (res.market || '') + ' (' + (res.district || '') + ')';
+          document.getElementById('cmvChartDateText').innerText = 'Reported: ' + (res.reporting_date || 'Today');
+          
+          document.getElementById('cmvMetricModal').innerText = res.price_display;
+          document.getElementById('cmvMetricMin').innerText = '₹' + Math.round(res.min_price);
+          document.getElementById('cmvMetricMax').innerText = '₹' + Math.round(res.max_price);
+          document.getElementById('cmvMetricSpread').innerText = '₹' + (res.max_price - res.min_price).toFixed(1) + ' ' + (res.unit_display || '');
+          
+          document.getElementById('cmvChartSourceLabel').innerHTML = '<i class="bi bi-shield-check text-success me-1"></i>' + (res.source || 'AGMARKNET');
+          document.getElementById('cmvCompareTitle').innerText = res.commodity;
+
+          // Build Chart Data
+          var labels = [];
+          var modalPoints = [];
+          var minPoints = [];
+          var maxPoints = [];
+
+          (res.history || []).forEach(function(pt) {
+            labels.push(pt.date_display || pt.date);
+            modalPoints.push(pt.price);
+            minPoints.push(pt.min_price);
+            maxPoints.push(pt.max_price);
+          });
+
+          var canvas = document.getElementById('cmvProductInteractiveChart');
+          if (!canvas) return;
+          var ctx = canvas.getContext('2d');
+          if (cmvChartInstance) cmvChartInstance.destroy();
+
+          var gradient = ctx.createLinearGradient(0, 0, 0, 260);
+          gradient.addColorStop(0, 'rgba(45, 106, 79, 0.28)');
+          gradient.addColorStop(1, 'rgba(45, 106, 79, 0.01)');
+
+          cmvChartInstance = new Chart(ctx, {
+            type: 'line',
+            data: {
+              labels: labels,
+              datasets: [
+                {
+                  label: 'Modal APMC Price',
+                  data: modalPoints,
+                  borderColor: '#2d6a4f',
+                  backgroundColor: gradient,
+                  borderWidth: 2.5,
+                  fill: true,
+                  tension: 0.35,
+                  pointRadius: days > 30 ? 1 : 3,
+                  pointHoverRadius: 6,
+                  pointBackgroundColor: '#2d6a4f',
+                  pointBorderColor: '#fff',
+                  pointBorderWidth: 2
+                },
+                {
+                  label: 'Min Price',
+                  data: minPoints,
+                  borderColor: 'rgba(100, 116, 139, 0.45)',
+                  borderDash: [4, 4],
+                  borderWidth: 1.5,
+                  fill: false,
+                  tension: 0.35,
+                  pointRadius: 0
+                },
+                {
+                  label: 'Max Price',
+                  data: maxPoints,
+                  borderColor: 'rgba(234, 88, 12, 0.45)',
+                  borderDash: [4, 4],
+                  borderWidth: 1.5,
+                  fill: false,
+                  tension: 0.35,
+                  pointRadius: 0
+                }
+              ]
+            },
+            options: {
+              responsive: true,
+              maintainAspectRatio: false,
+              interaction: { mode: 'index', intersect: false },
+              plugins: {
+                legend: {
+                  display: true,
+                  position: 'top',
+                  labels: { boxWidth: 12, font: { size: 11, weight: 'bold' } }
+                },
+                tooltip: {
+                  callbacks: {
+                    label: function(ctx) {
+                      return ctx.dataset.label + ': ₹' + Number(ctx.parsed.y).toFixed(2) + ' ' + (res.unit_display || '');
+                    }
+                  }
+                }
+              },
+              scales: {
+                y: {
+                  beginAtZero: false,
+                  ticks: {
+                    callback: function(v) { return '₹' + v; },
+                    font: { size: 11 }
+                  },
+                  grid: { color: 'rgba(0,0,0,0.05)' }
+                },
+                x: {
+                  ticks: { maxTicksLimit: days > 30 ? 10 : 7, font: { size: 10 } },
+                  grid: { display: false }
+                }
+              }
+            }
+          });
+
+          // Populate Inter-Mandi Table
+          var tbody = document.getElementById('cmvMandiCompareTableBody');
+          if (tbody && res.other_markets) {
+            var html = '';
+            var baseP = res.modal_price;
+            res.other_markets.forEach(function(m) {
+              var diff = m.modal_price - baseP;
+              var diffDisplay = '';
+              if (diff > 0) {
+                diffDisplay = '<span class="text-success fw-bold">+₹' + diff.toFixed(1) + '</span>';
+              } else if (diff < 0) {
+                diffDisplay = '<span class="text-danger fw-bold">-₹' + Math.abs(diff).toFixed(1) + '</span>';
+              } else {
+                diffDisplay = '<span class="text-muted fw-bold">Benchmark (Same)</span>';
+              }
+              var isCurrent = m.district === res.district;
+              html += '<tr class="' + (isCurrent ? 'table-success-subtle fw-semibold' : '') + '">' +
+                '<td>' + m.district + (isCurrent ? ' <span class="badge bg-success" style="font-size:0.65rem;">Active</span>' : '') + '</td>' +
+                '<td class="text-muted small">' + m.market + '</td>' +
+                '<td class="text-end fw-bold">₹' + m.modal_price.toFixed(0) + ' <span class="text-muted small">/' + m.unit + '</span></td>' +
+                '<td class="text-end text-muted small">₹' + m.min_price.toFixed(0) + ' - ₹' + m.max_price.toFixed(0) + '</td>' +
+                '<td class="text-end">' + diffDisplay + '</td>' +
+              '</tr>';
+            });
+            tbody.innerHTML = html || '<tr><td colspan="5" class="text-center py-2 text-muted">No comparison markets found.</td></tr>';
+          }
+        })
+        .catch(function(err) {
+          console.error('Error loading product details:', err);
+        });
+    }
+
+    // Product Search Input with Live Dropdown Suggestions
+    var cmvSearchBox = document.getElementById('cmvSearchInput');
+    var cmvDropdown = document.getElementById('cmvSearchDropdown');
+    var cmvSearchDebounce = null;
+
+    if (cmvSearchBox && cmvDropdown) {
+      cmvSearchBox.addEventListener('input', function() {
+        var query = cmvSearchBox.value.trim();
+        clearTimeout(cmvSearchDebounce);
+        if (query.length < 2) {
+          cmvDropdown.style.display = 'none';
+          cmvDropdown.innerHTML = '';
+          return;
+        }
+
+        cmvSearchDebounce = setTimeout(function() {
+          fetch('/api/cmv/search?q=' + encodeURIComponent(query) + '&location=' + encodeURIComponent(cmvCurrentLocation))
+            .then(function(r) { return r.json(); })
+            .then(function(results) {
+              if (!results || results.length === 0) {
+                cmvDropdown.innerHTML = '<div class="p-3 text-muted small text-center">No market commodities matching "' + query + '".</div>';
+                cmvDropdown.style.display = 'block';
+                return;
+              }
+
+              var html = '';
+              results.forEach(function(item) {
+                html += '<div class="cmv-search-item" onclick="cmvSelectSearchResult(\'' + item.commodity + '\', \'' + item.category + '\')">' +
+                  '<div>' +
+                    '<div class="fw-bold text-dark small">' + item.commodity + '</div>' +
+                    '<span class="badge bg-light text-muted border" style="font-size:0.68rem;">' + item.category + '</span>' +
+                  '</div>' +
+                  '<div class="text-end">' +
+                    '<div class="fw-bold text-success small">' + item.price_display + ' ' + item.unit_display + '</div>' +
+                    '<span class="text-muted" style="font-size:0.7rem;">' + item.market + '</span>' +
+                  '</div>' +
+                '</div>';
+              });
+              cmvDropdown.innerHTML = html;
+              cmvDropdown.style.display = 'block';
+            })
+            .catch(function(err) {
+              console.error('Search error:', err);
+            });
+        }, 220);
+      });
+
+      // Hide dropdown when clicking outside
+      document.addEventListener('click', function(e) {
+        if (!cmvSearchBox.contains(e.target) && !cmvDropdown.contains(e.target)) {
+          cmvDropdown.style.display = 'none';
+        }
+      });
+    }
+
+    window.cmvSelectSearchResult = function(commodity, category) {
+      if (cmvDropdown) cmvDropdown.style.display = 'none';
+      if (cmvSearchBox) cmvSearchBox.value = commodity;
+      
+      // Switch category if needed
+      if (category && category !== cmvCurrentCategory) {
+        cmvSelectCategory(category);
+      }
+      setTimeout(function() {
+        cmvSelectProduct(commodity);
+        var el = document.getElementById('cmvChartProductTitle');
+        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 100);
+    };
+
+    // AGMARKNET Sync Trigger
+    window.cmvPerformSync = function() {
+      var btn = document.getElementById('cmvTriggerSyncBtn');
+      var resultBox = document.getElementById('cmvSyncResult');
+      var apiKey = (document.getElementById('cmvApiKeyInput').value || '').trim();
+
+      if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Contacting data.gov.in...';
+      }
+      if (resultBox) {
+        resultBox.classList.remove('d-none', 'alert-success', 'alert-warning', 'alert-danger');
+        resultBox.classList.add('alert-info');
+        resultBox.innerText = 'Connecting to Government of India data.gov.in AGMARKNET dataset...';
+      }
+
+      fetch('/api/cmv/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ api_key: apiKey })
+      })
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        if (btn) {
+          btn.disabled = false;
+          btn.innerHTML = '<i class="bi bi-cloud-arrow-down me-1"></i> Sync Latest Mandi Data';
+        }
+        if (resultBox) {
+          resultBox.classList.remove('alert-info');
+          if (data.success) {
+            resultBox.classList.add('alert-success');
+            resultBox.innerHTML = '<i class="bi bi-check-circle-fill me-1"></i> ' + data.message;
+            // Refresh dashboard
+            cmvChangeLocation(cmvCurrentLocation);
+          } else {
+            resultBox.classList.add('alert-warning');
+            resultBox.innerHTML = '<i class="bi bi-exclamation-triangle-fill me-1"></i> ' + data.message + 
+              '<br><small class="text-muted">Serving verified MongoDB APMC & KMF dataset (' + data.records_count + ' active records).</small>';
+          }
+        }
+      })
+      .catch(function(err) {
+        if (btn) {
+          btn.disabled = false;
+          btn.innerHTML = '<i class="bi bi-cloud-arrow-down me-1"></i> Sync Latest Mandi Data';
+        }
+        if (resultBox) {
+          resultBox.classList.remove('alert-info');
+          resultBox.classList.add('alert-danger');
+          resultBox.innerHTML = '<i class="bi bi-x-circle me-1"></i> Sync request failed: ' + err.message;
+        }
+      });
+    };
+
+    // Initial Load of CMV Explorer & Product Chart
+    cmvLoadCategoryProducts('Vegetables', cmvCurrentLocation, true);
+
   }
 
   if (document.readyState === 'loading') {

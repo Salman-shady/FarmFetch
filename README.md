@@ -61,3 +61,45 @@ Open **`http://localhost:5000`** in your browser.
 - **Database**: MongoDB (via PyMongo)
 - **Frontend**: HTML5, Bootstrap 5, CSS3, JavaScript (Fetch API, Geolocation, Socket.IO client, Leaflet.js maps)
 - **Real-Time**: Socket.IO for live driver GPS tracking, status alerts, and order chat
+
+## ☁️ Deploy on Render
+
+This application uses MongoDB, so a hosted MongoDB database is required. A local
+MongoDB URL (`mongodb://localhost:27017/`) will not work on Render.
+
+1. Create a free MongoDB Atlas cluster and database user.
+2. In Atlas, add `0.0.0.0/0` under **Network Access** so Render can connect.
+3. Copy the Atlas driver connection string, which starts with `mongodb+srv://`.
+4. Push this repository to GitHub.
+5. In Render, choose **New → Blueprint**, select this repository, and apply the
+   included `render.yaml`. Alternatively, create a Python Web Service manually
+   with:
+
+   ```text
+   Build Command: pip install -r requirements.txt
+   Start Command: gunicorn --worker-class geventwebsocket.gunicorn.workers.GeventWebSocketWorker --workers 1 --bind 0.0.0.0:$PORT app:app
+   ```
+
+6. In the Render service environment variables, set:
+
+   ```text
+   MONGO_URI=mongodb+srv://<user>:<password>@<cluster>/
+   MONGO_DB_NAME=farm2table
+   SECRET_KEY=<a long random value>
+   ```
+
+   The Blueprint generates `SECRET_KEY` automatically. Never commit `.env` or
+   put its values in source control.
+7. Deploy and open the `.onrender.com` URL shown by Render.
+
+To load the optional demo accounts into Atlas, run this locally after replacing
+the URI with your Atlas connection string:
+
+```powershell
+$env:MONGO_URI="mongodb+srv://<user>:<password>@<cluster>/"
+$env:MONGO_DB_NAME="farm2table"
+python seed_data.py
+```
+
+The service uses one Gunicorn worker because Socket.IO requires single-process
+handling unless a message broker is configured.

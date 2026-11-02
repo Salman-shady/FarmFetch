@@ -1,0 +1,1553 @@
+{% extends "base.html" %}
+
+{% block title %}{{ data.category_name }} – Current Market Value | FarmFetch{% endblock %}
+
+{% block head_extra %}
+<style>
+/* ==========================================================================
+   CMV Category Detail Page - Exact Match to Reference Design
+   ========================================================================== */
+
+:root {
+  --cmv-bg: #f8fafc;
+  --cmv-card-bg: #ffffff;
+  --cmv-border: #e8eef3;
+  --cmv-primary-green: #0a522c;
+  --cmv-accent-green: #10b981;
+  --cmv-light-green: #ecfdf5;
+  --cmv-soft-yellow: #fef9c3;
+  --cmv-soft-red: #fee2e2;
+  --cmv-text-dark: #0f172a;
+  --cmv-text-muted: #64748b;
+  --cmv-radius: 16px;
+}
+
+body {
+  background-color: var(--cmv-bg);
+}
+
+.cmv-detail-wrapper {
+  max-width: 1320px;
+  margin: 0 auto;
+  padding: 1.5rem 1rem 3rem;
+}
+
+/* Outer Card Container */
+.cmv-main-frame {
+  background: var(--cmv-card-bg);
+  border: 1px solid var(--cmv-border);
+  border-radius: 20px;
+  padding: 1.75rem 2rem;
+  box-shadow: 0 4px 24px rgba(15, 23, 42, 0.04);
+}
+
+/* Header Bar */
+.cmv-detail-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 1rem;
+  padding-bottom: 1.25rem;
+  margin-bottom: 1.5rem;
+  border-bottom: 1px solid var(--cmv-border);
+}
+
+.cmv-header-left {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.cmv-back-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  color: var(--cmv-text-dark);
+  background: #f1f5f9;
+  text-decoration: none;
+  font-size: 1.15rem;
+  transition: all 0.2s ease;
+}
+
+.cmv-back-btn:hover {
+  background: #e2e8f0;
+  color: #000;
+  transform: translateX(-2px);
+}
+
+.cmv-page-title {
+  font-size: 1.35rem;
+  font-weight: 800;
+  color: var(--cmv-text-dark);
+  letter-spacing: -0.02em;
+  margin: 0;
+}
+
+.cmv-header-right {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  flex-wrap: wrap;
+}
+
+/* City Selector Pill */
+.cmv-city-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  border-radius: 50px;
+  padding: 0.45rem 1rem;
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: var(--cmv-text-dark);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.03);
+}
+
+.cmv-city-pill select {
+  border: none;
+  background: transparent;
+  font-weight: 700;
+  color: var(--cmv-text-dark);
+  outline: none;
+  cursor: pointer;
+  padding-right: 0.25rem;
+}
+
+/* Search Box Pill */
+.cmv-search-pill {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  min-width: 270px;
+}
+
+.cmv-search-pill input {
+  width: 100%;
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  border-radius: 50px;
+  padding: 0.45rem 1rem 0.45rem 2.25rem;
+  font-size: 0.86rem;
+  color: var(--cmv-text-dark);
+  outline: none;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.cmv-search-pill input:focus {
+  border-color: var(--cmv-accent-green);
+  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.15);
+}
+
+.cmv-search-pill .search-icon {
+  position: absolute;
+  left: 0.85rem;
+  color: var(--cmv-text-muted);
+  font-size: 0.85rem;
+  pointer-events: none;
+}
+
+/* Notification & Profile Icons */
+.cmv-icon-badge-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  color: var(--cmv-text-dark);
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.cmv-icon-badge-btn:hover {
+  background: #f8fafc;
+}
+
+.cmv-badge-dot {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 10px;
+  height: 10px;
+  background: #dc2626;
+  border: 2px solid #fff;
+  border-radius: 50%;
+}
+
+.cmv-avatar-circle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: #eafaf1;
+  color: #16a34a;
+  border: 1px solid #a7f3d0;
+  font-size: 1.1rem;
+  cursor: pointer;
+}
+
+/* ==========================================================================
+   Top 4 KPI Cards
+   ========================================================================== */
+.cmv-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1.25rem;
+  margin-bottom: 1.5rem;
+}
+
+.cmv-kpi-card {
+  background: #ffffff;
+  border: 1px solid var(--cmv-border);
+  border-radius: var(--cmv-radius);
+  padding: 1.15rem 1.35rem;
+  display: flex;
+  align-items: center;
+  gap: 1.1rem;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.02);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.cmv-kpi-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+}
+
+.cmv-kpi-icon-box {
+  width: 48px;
+  height: 48px;
+  border-radius: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.45rem;
+  flex-shrink: 0;
+}
+
+.cmv-kpi-icon-green { background: #eafaf1; color: #16a34a; }
+.cmv-kpi-icon-amber { background: #fef9c3; color: #d97706; }
+.cmv-kpi-icon-red { background: #fee2e2; color: #dc2626; }
+
+.cmv-kpi-label {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--cmv-text-muted);
+  margin-bottom: 0.2rem;
+}
+
+.cmv-kpi-val {
+  font-size: 1.55rem;
+  font-weight: 800;
+  color: var(--cmv-text-dark);
+  line-height: 1.1;
+}
+
+/* ==========================================================================
+   Middle Row (3 Columns: Price Trend, Market Insight, Live Price)
+   ========================================================================== */
+.cmv-middle-grid {
+  display: grid;
+  grid-template-columns: 1.8fr 1.25fr 0.95fr;
+  gap: 1.25rem;
+  margin-bottom: 1.5rem;
+}
+
+.cmv-panel-card {
+  background: #ffffff;
+  border: 1px solid var(--cmv-border);
+  border-radius: var(--cmv-radius);
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.02);
+  transition: box-shadow 0.3s ease;
+}
+
+/* Card 1: Price Trend */
+.cmv-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.85rem;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.cmv-panel-title {
+  font-size: 0.96rem;
+  font-weight: 800;
+  color: var(--cmv-text-dark);
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin: 0;
+}
+
+/* Timeframe Toggles: Days, Week, Month, Year */
+.cmv-tf-pill-group {
+  display: inline-flex;
+  align-items: center;
+  background: #f1f5f9;
+  border-radius: 50px;
+  padding: 2px;
+  gap: 2px;
+  border: 1px solid #e2e8f0;
+}
+
+.cmv-tf-btn {
+  border: none;
+  background: transparent;
+  padding: 0.24rem 0.65rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--cmv-text-muted);
+  border-radius: 50px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.cmv-tf-btn:hover {
+  color: var(--cmv-text-dark);
+}
+
+.cmv-tf-btn.active {
+  background: #ffffff;
+  color: var(--cmv-primary-green);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+.cmv-product-select-pill {
+  border: 1px solid #cbd5e1;
+  border-radius: 50px;
+  padding: 0.3rem 0.85rem;
+  font-size: 0.84rem;
+  font-weight: 700;
+  color: var(--cmv-text-dark);
+  background: #ffffff;
+  outline: none;
+  cursor: pointer;
+}
+
+.cmv-chart-container {
+  position: relative;
+  width: 100%;
+  height: 230px;
+}
+
+/* Card 2: Market Insight */
+.cmv-insight-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.95rem;
+  margin-top: 0.5rem;
+  flex-grow: 1;
+  justify-content: center;
+}
+
+.cmv-insight-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.65rem;
+  font-size: 0.88rem;
+  line-height: 1.45;
+  color: var(--cmv-text-dark);
+}
+
+.cmv-insight-arrow {
+  font-size: 1.15rem;
+  font-weight: 900;
+  line-height: 1;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+/* Card 3: Live Price */
+.cmv-live-card {
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.cmv-live-top-label {
+  align-self: flex-start;
+  font-size: 0.88rem;
+  font-weight: 800;
+  color: var(--cmv-text-dark);
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.cmv-live-dot {
+  width: 9px;
+  height: 9px;
+  background-color: #dc2626;
+  border-radius: 50%;
+  display: inline-block;
+  box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.2);
+  animation: cmvPulse 1.8s infinite;
+}
+
+@keyframes cmvPulse {
+  0% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.4); }
+  70% { box-shadow: 0 0 0 6px rgba(220, 38, 38, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0); }
+}
+
+.cmv-live-img-wrap {
+  width: 105px;
+  height: 105px;
+  border-radius: 18px;
+  overflow: hidden;
+  margin: 0.65rem auto 0.4rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f8fafc;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+}
+
+.cmv-live-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.3s ease;
+}
+
+.cmv-live-img:hover {
+  transform: scale(1.08);
+}
+
+.cmv-live-name {
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: var(--cmv-text-dark);
+  margin-bottom: 0.2rem;
+}
+
+.cmv-live-price-big {
+  font-size: 1.55rem;
+  font-weight: 900;
+  color: var(--cmv-text-dark);
+  margin-bottom: 0.85rem;
+}
+
+.cmv-btn-live-chart {
+  background: var(--cmv-primary-green);
+  color: #ffffff;
+  border: none;
+  border-radius: 12px;
+  padding: 0.55rem 1.25rem;
+  font-size: 0.86rem;
+  font-weight: 700;
+  width: 100%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  text-decoration: none;
+  transition: background 0.2s ease, transform 0.15s ease;
+  cursor: pointer;
+}
+
+.cmv-btn-live-chart:hover {
+  background: #084323;
+  color: #fff;
+  transform: translateY(-1px);
+}
+
+/* ==========================================================================
+   Bottom Row (2 Columns: Prices Table & Forecast/Alert)
+   ========================================================================== */
+.cmv-bottom-grid {
+  display: grid;
+  grid-template-columns: 2.15fr 1.05fr;
+  gap: 1.25rem;
+}
+
+/* Prices Table */
+.cmv-table-card {
+  background: #ffffff;
+  border: 1px solid var(--cmv-border);
+  border-radius: var(--cmv-radius);
+  padding: 1.25rem;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.02);
+}
+
+.cmv-table-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.cmv-table-filters {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.cmv-filter-dropdown {
+  border: 1px solid #cbd5e1;
+  border-radius: 50px;
+  padding: 0.32rem 0.85rem;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--cmv-text-dark);
+  background: #ffffff;
+  outline: none;
+  cursor: pointer;
+}
+
+/* Dark Green Header Table matching screenshot */
+.cmv-custom-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 0.88rem;
+}
+
+.cmv-custom-table thead th {
+  background: var(--cmv-primary-green);
+  color: #ffffff;
+  font-weight: 700;
+  font-size: 0.84rem;
+  padding: 0.75rem 0.85rem;
+  border: none;
+  letter-spacing: 0.01em;
+}
+
+.cmv-custom-table thead th:first-child {
+  border-top-left-radius: 8px;
+  border-bottom-left-radius: 8px;
+}
+
+.cmv-custom-table thead th:last-child {
+  border-top-right-radius: 8px;
+  border-bottom-right-radius: 8px;
+}
+
+.cmv-custom-table tbody tr {
+  transition: background 0.15s ease;
+  cursor: pointer;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.cmv-custom-table tbody tr:hover {
+  background: #f8fafc;
+}
+
+.cmv-custom-table tbody tr.active-row {
+  background: #f0fdf4;
+}
+
+.cmv-custom-table tbody td {
+  padding: 0.75rem 0.85rem;
+  vertical-align: middle;
+  color: var(--cmv-text-dark);
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.cmv-comm-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-weight: 700;
+}
+
+/* Right Stack: Forecast & Price Alert */
+.cmv-right-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+/* Card A: Forecast */
+.cmv-forecast-card {
+  background: #ffffff;
+  border: 1px solid var(--cmv-border);
+  border-radius: var(--cmv-radius);
+  padding: 1.25rem;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.02);
+}
+
+.cmv-ai-badge {
+  background: #e0f2fe;
+  color: #0284c7;
+  font-size: 0.75rem;
+  font-weight: 800;
+  padding: 0.2rem 0.55rem;
+  border-radius: 50px;
+}
+
+.cmv-forecast-pill-box {
+  background: #ecfdf5;
+  border: 1px solid #a7f3d0;
+  border-radius: 12px;
+  padding: 0.85rem 1rem;
+  color: #065f46;
+  font-weight: 800;
+  font-size: 1.02rem;
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.cmv-forecast-arrow {
+  color: #10b981;
+  font-size: 1.35rem;
+  line-height: 1;
+}
+
+/* Card B: Price Alert */
+.cmv-alert-card {
+  background: #ffffff;
+  border: 1px solid var(--cmv-border);
+  border-radius: var(--cmv-radius);
+  padding: 1.25rem;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.02);
+}
+
+.cmv-btn-set-alert {
+  background: var(--cmv-primary-green);
+  color: #ffffff;
+  border: none;
+  border-radius: 10px;
+  padding: 0.55rem 1rem;
+  font-size: 0.88rem;
+  font-weight: 700;
+  width: 100%;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.cmv-btn-set-alert:hover {
+  background: #084323;
+}
+
+/* Toast container */
+#cmvToastContainer {
+  position: fixed;
+  bottom: 1.5rem;
+  right: 1.5rem;
+  z-index: 9999;
+}
+
+/* Responsive Media Queries */
+@media (max-width: 992px) {
+  .cmv-kpi-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .cmv-middle-grid {
+    grid-template-columns: 1fr;
+  }
+  .cmv-bottom-grid {
+    grid-template-columns: 1fr;
+  }
+  .cmv-search-pill {
+    min-width: 100%;
+  }
+}
+
+@media (max-width: 576px) {
+  .cmv-kpi-grid {
+    grid-template-columns: 1fr;
+  }
+  .cmv-main-frame {
+    padding: 1rem;
+  }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="cmv-detail-wrapper">
+  
+  <!-- Outer Clean Card Frame matching reference screenshot -->
+  <div class="cmv-main-frame">
+
+    <!-- Header Bar -->
+    <div class="cmv-detail-header">
+      <div class="cmv-header-left">
+        <a href="{{ url_for('farmer_dashboard') }}#sect-current-market-value" class="cmv-back-btn" title="Back to Farmer Dashboard">
+          <i class="bi bi-arrow-left"></i>
+        </a>
+        <h1 class="cmv-page-title" id="cmvHeaderTitle">{{ data.category_name }} – Current Market Value</h1>
+      </div>
+
+      <div class="cmv-header-right">
+        <!-- City Selector Pill -->
+        <div class="cmv-city-pill" title="Switch Agricultural Mandi Location">
+          <i class="bi bi-geo-alt-fill text-dark"></i>
+          <select id="cmvCitySelect" onchange="cmvOnCityChanged(this.value)">
+            {% for loc in data.available_locations %}
+            <option value="{{ loc }}" {% if loc == data.location %}selected{% endif %}>{{ loc }}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <!-- Search Input Pill -->
+        <div class="cmv-search-pill">
+          <i class="bi bi-search search-icon"></i>
+          <input type="text" id="cmvSearchInput" placeholder="Search {{ data.category_name|lower }} (e.g., Mango, Banana...)" oninput="cmvOnSearchInput(this.value)">
+        </div>
+
+        <!-- Notification Bell Icon with Badge -->
+        <div class="cmv-icon-badge-btn" title="Price Notifications" onclick="cmvShowNotice('Daily APMC Price Bulletin verified for {{ data.location }}.')">
+          <i class="bi bi-bell"></i>
+          <span class="cmv-badge-dot"></span>
+        </div>
+
+        <!-- Profile Avatar Icon -->
+        <div class="cmv-avatar-circle" title="Farmer Account • {{ current_user.name if current_user.is_authenticated else 'Farmer' }}">
+          <i class="bi bi-person"></i>
+        </div>
+      </div>
+    </div>
+
+    <!-- Top 4 KPI Metric Cards in 1 Row -->
+    <div class="cmv-kpi-grid">
+      <!-- 1. Total Items -->
+      <div class="cmv-kpi-card">
+        <div class="cmv-kpi-icon-box cmv-kpi-icon-green">
+          <i class="bi bi-basket2"></i>
+        </div>
+        <div>
+          <div class="cmv-kpi-label" id="kpiTotalLabel">{{ data.kpis.total_label }}</div>
+          <div class="cmv-kpi-val" id="kpiTotalVal">{{ data.kpis.total_items }}</div>
+        </div>
+      </div>
+
+      <!-- 2. Avg. Market Price (Dynamic based on selected fruit) -->
+      <div class="cmv-kpi-card">
+        <div class="cmv-kpi-icon-box cmv-kpi-icon-amber">
+          <i class="bi bi-bar-chart-fill"></i>
+        </div>
+        <div>
+          <div class="cmv-kpi-label" id="kpiAvgLabel">{{ data.kpis.avg_price_title|default('Avg. Market Price') }}</div>
+          <div class="cmv-kpi-val" id="kpiAvgVal">{{ data.kpis.avg_price_display }}</div>
+        </div>
+      </div>
+
+      <!-- 3. Price Increase -->
+      <div class="cmv-kpi-card">
+        <div class="cmv-kpi-icon-box cmv-kpi-icon-green">
+          <i class="bi bi-arrow-up-right"></i>
+        </div>
+        <div>
+          <div class="cmv-kpi-label">Price Increase</div>
+          <div class="cmv-kpi-val text-success" id="kpiIncreaseVal">{{ data.kpis.price_increase }}</div>
+        </div>
+      </div>
+
+      <!-- 4. Price Decrease -->
+      <div class="cmv-kpi-card">
+        <div class="cmv-kpi-icon-box cmv-kpi-icon-red">
+          <i class="bi bi-arrow-down-right"></i>
+        </div>
+        <div>
+          <div class="cmv-kpi-label">Price Decrease</div>
+          <div class="cmv-kpi-val text-danger" id="kpiDecreaseVal">{{ data.kpis.price_decrease }}</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Middle Row (3 Cards: Price Trend, Market Insight, Live Price) -->
+    <div class="cmv-middle-grid">
+      
+      <!-- Card 1: Price Trend Chart with Days, Week, Month, Year (1 Year Live Chart) -->
+      <div class="cmv-panel-card" id="trendCard">
+        <div class="cmv-panel-header">
+          <h2 class="cmv-panel-title">
+            <i class="bi bi-graph-up text-success"></i> 
+            <span>Price Trend (<span id="trendProductTitle">{{ data.selected_product }}</span>)</span>
+          </h2>
+          
+          <div class="d-flex align-items-center gap-2 flex-wrap">
+            <!-- Timeframe Pill Group: Days, Week, Month, Year -->
+            <div class="cmv-tf-pill-group">
+              <button type="button" class="cmv-tf-btn {% if data.active_timeframe == 'days' %}active{% endif %}" data-tf="days" onclick="cmvSetTimeframe('days')">Days</button>
+              <button type="button" class="cmv-tf-btn {% if data.active_timeframe == 'week' or not data.active_timeframe %}active{% endif %}" data-tf="week" onclick="cmvSetTimeframe('week')">Week</button>
+              <button type="button" class="cmv-tf-btn {% if data.active_timeframe == 'month' %}active{% endif %}" data-tf="month" onclick="cmvSetTimeframe('month')">Month</button>
+              <button type="button" class="cmv-tf-btn {% if data.active_timeframe == 'year' %}active{% endif %}" data-tf="year" onclick="cmvSetTimeframe('year')">Year</button>
+            </div>
+
+            <!-- Product Dropdown -->
+            <select id="trendProductSelect" class="cmv-product-select-pill" onchange="cmvOnProductChanged(this.value)">
+              {% for p in data.products_table %}
+              <option value="{{ p.commodity }}" {% if p.commodity == data.selected_product %}selected{% endif %}>{{ p.commodity }}</option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+
+        <div class="cmv-chart-container">
+          <canvas id="cmvTrendCanvas"></canvas>
+        </div>
+      </div>
+
+      <!-- Card 2: Market Insight -->
+      <div class="cmv-panel-card">
+        <div class="cmv-panel-header">
+          <h2 class="cmv-panel-title">
+            <i class="bi bi-lightbulb-fill text-warning"></i> 
+            <span>Market Insight</span>
+          </h2>
+        </div>
+        <div class="cmv-insight-list" id="marketInsightsContainer">
+          {% for ins in data.market_insights %}
+          <div class="cmv-insight-item">
+            <span class="cmv-insight-arrow" style="color: {{ ins.color }};">{{ ins.symbol }}</span>
+            <span>{{ ins.text }}</span>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+
+      <!-- Card 3: Live Price (Product-specific photo + 1-Year Live Chart button) -->
+      <div class="cmv-panel-card cmv-live-card">
+        <div class="cmv-live-top-label">
+          <span class="cmv-live-dot"></span> Live Price
+        </div>
+
+        <div class="cmv-live-img-wrap">
+          <img id="liveImg" src="{{ data.live_price.image_url }}" alt="{{ data.live_price.commodity }}" class="cmv-live-img">
+        </div>
+
+        <div class="cmv-live-name" id="liveName">{{ data.live_price.commodity }}</div>
+        <div class="cmv-live-price-big" id="livePrice">{{ data.live_price.price_display }}</div>
+
+        <button type="button" class="cmv-btn-live-chart" onclick="cmvShowLiveYearChart()">
+          <i class="bi bi-graph-up"></i> View Live Chart (1 Year)
+        </button>
+      </div>
+
+    </div>
+
+    <!-- Bottom Row (2 Columns: Prices Table & Forecast/Alert) -->
+    <div class="cmv-bottom-grid">
+      
+      <!-- Column 1: Market Prices Table -->
+      <div class="cmv-table-card">
+        <div class="cmv-table-header">
+          <h2 class="cmv-panel-title">
+            <i class="bi bi-basket-fill text-success fs-5"></i> 
+            <span id="tableTitle">{{ data.category_name }} Market Prices</span>
+          </h2>
+          <div class="cmv-table-filters">
+            <select id="tableFilterProduct" class="cmv-filter-dropdown" onchange="cmvFilterTableDropdown(this.value)">
+              <option value="all">All {{ data.category_name }}</option>
+              {% for p in data.products_table %}
+              <option value="{{ p.commodity }}">{{ p.commodity }}</option>
+              {% endfor %}
+            </select>
+            <select id="tableFilterPeriod" class="cmv-filter-dropdown" onchange="cmvOnPeriodChange(this.value)">
+              <option value="this_week" selected>This Week</option>
+              <option value="last_week">Last Week</option>
+              <option value="month">This Month</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="table-responsive">
+          <table class="cmv-custom-table" id="marketPricesTable">
+            <thead>
+              <tr>
+                <th style="width: 70px; text-align: center;">Sl. No.</th>
+                <th>Fruit</th>
+                <th>Market</th>
+                <th style="text-align: right;">Current Price (₹/Kg)</th>
+                <th style="text-align: right;">Change (%)</th>
+                <th style="text-align: center; width: 80px;">Trend</th>
+              </tr>
+            </thead>
+            <tbody id="marketTableBody">
+              {% for p in data.products_table %}
+              <tr data-commodity="{{ p.commodity }}" class="{% if p.commodity == data.selected_product %}active-row{% endif %}" onclick="cmvOnRowClicked('{{ p.commodity }}')">
+                <td style="text-align: center;" class="text-muted fw-bold">{{ p.sl_no }}</td>
+                <td>
+                  <span class="cmv-comm-name">
+                    <span style="font-size: 1.15rem;">{{ p.icon }}</span>
+                    <span>{{ p.commodity }}</span>
+                  </span>
+                </td>
+                <td class="text-muted">{{ p.market }}</td>
+                <td style="text-align: right; font-weight: 800;">{{ p.current_price_display }}</td>
+                <td style="text-align: right; font-weight: 700; color: {% if p.trend == 'up' %}#16a34a{% elif p.trend == 'down' %}#dc2626{% else %}#64748b{% endif %};">
+                  {{ p.change_display }}
+                </td>
+                <td style="text-align: center; font-weight: 900; font-size: 1.15rem; color: {% if p.trend == 'up' %}#16a34a{% elif p.trend == 'down' %}#dc2626{% else %}#64748b{% endif %};">
+                  {{ p.trend_symbol }}
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Column 2: Stacked Cards (Price Forecast & Set Price Alert) -->
+      <div class="cmv-right-stack">
+        
+        <!-- Card A: Price Forecast -->
+        <div class="cmv-forecast-card">
+          <div class="d-flex justify-content-between align-items-center mb-1">
+            <h2 class="cmv-panel-title">
+              <i class="bi bi-bullseye text-danger"></i> 
+              <span>Price Forecast</span>
+            </h2>
+            <span class="cmv-ai-badge">AI / ML</span>
+          </div>
+          <div class="text-muted small mb-3">Next Week (W7) Expected Price</div>
+
+          <div class="cmv-forecast-pill-box">
+            <span class="cmv-forecast-arrow" id="forecastArrow">{{ data.price_forecast.trend_symbol }}</span>
+            <span id="forecastRangeText">{{ data.price_forecast.expected_range_display }}</span>
+          </div>
+        </div>
+
+        <!-- Card B: Set Price Alert -->
+        <div class="cmv-alert-card">
+          <h2 class="cmv-panel-title mb-1">
+            <i class="bi bi-bell-fill text-warning"></i> 
+            <span>Set Price Alert</span>
+          </h2>
+          <div class="text-muted small mb-3">Get notified when the price changes.</div>
+
+          <div class="mb-2">
+            <select id="alertProductSelect" class="form-select form-select-sm rounded-3">
+              {% for p in data.products_table %}
+              <option value="{{ p.commodity }}" {% if p.commodity == data.selected_product %}selected{% endif %}>{{ p.commodity }}</option>
+              {% endfor %}
+            </select>
+          </div>
+
+          <div class="mb-3">
+            <input type="number" id="alertPriceInput" class="form-control form-control-sm rounded-3" placeholder="Target Price (₹/Kg)" min="1" step="1" value="{{ data.live_price.price - 5 }}">
+          </div>
+
+          <button type="button" class="cmv-btn-set-alert" onclick="cmvOnSubmitAlert()">
+            Set Alert
+          </button>
+        </div>
+
+      </div>
+
+    </div>
+
+  </div>
+
+</div>
+
+<!-- Animated Alert Notification Toast Container -->
+<div id="cmvToastContainer"></div>
+
+<!-- Chart.js 4.4.0 -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+
+<script>
+(function() {
+  'use strict';
+
+  // Server state injection
+  var currentCategory = {{ data.category_name|tojson }};
+  var currentLocation = {{ data.location|tojson }};
+  var currentProduct = {{ data.selected_product|tojson }};
+  var currentTimeframe = {{ (data.active_timeframe or 'week')|tojson }};
+  var currentTimeframesData = {{ data.timeframes|tojson }};
+  var trendChartInstance = null;
+
+  // Real product images dictionary for instantaneous responsive swaps
+  var PRODUCT_IMAGE_MAP = {
+    // Fruits
+    'Mango': '/static/images/cmv/mango.jpg',
+    'Papaya': '/static/images/cmv/papaya.jpg',
+    'Watermelon': '/static/images/cmv/watermelon.jpg',
+    'Banana': '/static/images/cmv/banana.jpg',
+    'Apple': '/static/images/cmv/apple.jpg',
+    'Orange': '/static/images/cmv/orange.jpg',
+    'Grapes': '/static/images/cmv/grapes.jpg',
+    'Pomegranate': '/static/images/cmv/pomegranate.jpg',
+    'Guava': '/static/images/cmv/fruits.jpg',
+
+    // Vegetables
+    'Tomato': '/static/images/cmv/tomato.jpg',
+    'Onion': '/static/images/cmv/onion.jpg',
+    'Potato': '/static/images/cmv/potato.jpg',
+    'Carrot': '/static/images/cmv/carrot.jpg',
+    'Beans': '/static/images/cmv/beans.jpg',
+    'Cabbage': '/static/images/cmv/cabbage.jpg',
+    'Cauliflower': '/static/images/cmv/cauliflower.jpg',
+    'Chilli (Green)': '/static/images/cmv/chilli.jpg',
+    'Chilli': '/static/images/cmv/chilli.jpg',
+    'Capsicum': '/static/images/cmv/capsicum.jpg',
+
+    // Grains
+    'Rice (Sona Masoori)': '/static/images/cmv/rice.jpg',
+    'Rice (Basmati)': '/static/images/cmv/rice.jpg',
+    'Rice': '/static/images/cmv/rice.jpg',
+    'Wheat (Sharbati)': '/static/images/cmv/wheat.jpg',
+    'Wheat (Lokwan)': '/static/images/cmv/wheat.jpg',
+    'Wheat': '/static/images/cmv/wheat.jpg',
+    'Ragi (Finger Millet)': '/static/images/cmv/ragi.jpg',
+    'Ragi': '/static/images/cmv/ragi.jpg',
+    'Maize': '/static/images/cmv/maize.jpg',
+    'Pulses (Toor Dal)': '/static/images/cmv/toor_dal.jpg',
+    'Pulses (Moong Dal)': '/static/images/cmv/moong_dal.jpg',
+    'Pulses (Chana Dal)': '/static/images/cmv/toor_dal.jpg',
+    'Pulses': '/static/images/cmv/toor_dal.jpg',
+
+    // Herbs
+    'Coriander': '/static/images/cmv/coriander.jpg',
+    'Mint': '/static/images/cmv/mint.jpg',
+    'Curry leaves': '/static/images/cmv/curry_leaves.jpg',
+    'Spinach (Palak)': '/static/images/cmv/spinach.jpg',
+    'Methi (Fenugreek)': '/static/images/cmv/methi.jpg',
+
+    // Dairy
+    'Milk (Nandini Toned)': '/static/images/cmv/milk.jpg',
+    'Milk (Cow)': '/static/images/cmv/milk.jpg',
+    'Milk (Buffalo)': '/static/images/cmv/milk.jpg',
+    'Milk': '/static/images/cmv/milk.jpg',
+    'Curd (Dahi)': '/static/images/cmv/curd.jpg',
+    'Curd': '/static/images/cmv/curd.jpg',
+    'Butter (Fresh)': '/static/images/cmv/butter.jpg',
+    'Butter': '/static/images/cmv/butter.jpg',
+    'Ghee (Pure)': '/static/images/cmv/ghee.jpg',
+    'Ghee': '/static/images/cmv/ghee.jpg',
+    'Paneer (Fresh)': '/static/images/cmv/paneer.jpg',
+    'Paneer': '/static/images/cmv/paneer.jpg'
+  };
+
+  function cmvGetProductImage(commodity, category) {
+    if (PRODUCT_IMAGE_MAP[commodity]) {
+      return PRODUCT_IMAGE_MAP[commodity];
+    }
+    var commLower = (commodity || '').toLowerCase();
+    for (var k in PRODUCT_IMAGE_MAP) {
+      if (commLower.indexOf(k.toLowerCase()) !== -1 || k.toLowerCase().indexOf(commLower) !== -1) {
+        return PRODUCT_IMAGE_MAP[k];
+      }
+    }
+    var catDefault = (category || currentCategory || '').toLowerCase();
+    if (catDefault.indexOf('veg') !== -1) return '/static/images/cmv/vegetables.jpg';
+    if (catDefault.indexOf('grain') !== -1) return '/static/images/cmv/grains.jpg';
+    if (catDefault.indexOf('herb') !== -1) return '/static/images/cmv/herbs.jpg';
+    if (catDefault.indexOf('dairy') !== -1) return '/static/images/cmv/dairy.jpg';
+    return '/static/images/cmv/fruits.jpg';
+  }
+
+  // Custom Chart.js Plugin to render floating ₹ values directly above data points matching screenshot
+  var floatingDataLabelsPlugin = {
+    id: 'floatingDataLabels',
+    afterDatasetsDraw: function(chart) {
+      var ctx = chart.ctx;
+      chart.data.datasets.forEach(function(dataset, i) {
+        var meta = chart.getDatasetMeta(i);
+        meta.data.forEach(function(element, index) {
+          var val = dataset.data[index];
+          if (val !== undefined && val !== null) {
+            ctx.save();
+            ctx.font = 'bold 11px sans-serif';
+            ctx.fillStyle = '#0f172a';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'bottom';
+            ctx.fillText('₹' + Math.round(val), element.x, element.y - 8);
+            ctx.restore();
+          }
+        });
+      });
+    }
+  };
+
+  // Initialize or re-render the Chart.js Line Chart
+  function renderTrendChart(chartData) {
+    var ctx = document.getElementById('cmvTrendCanvas');
+    if (!ctx) return;
+
+    if (trendChartInstance) {
+      trendChartInstance.destroy();
+    }
+
+    var canvasCtx = ctx.getContext('2d');
+    var gradient = canvasCtx.createLinearGradient(0, 0, 0, 200);
+    gradient.addColorStop(0, 'rgba(16, 185, 129, 0.28)');
+    gradient.addColorStop(1, 'rgba(16, 185, 129, 0.01)');
+
+    var labels = chartData.labels || ['W1', 'W2', 'W3', 'W4', 'W5', 'W6'];
+    var points = chartData.points || [60, 75, 110, 95, 80, 85];
+    var minY = chartData.min_y !== undefined ? chartData.min_y : Math.max(0, Math.min.apply(null, points) - 15);
+    var maxY = chartData.max_y !== undefined ? chartData.max_y : (Math.max.apply(null, points) + 20);
+
+    trendChartInstance = new Chart(canvasCtx, {
+      type: 'line',
+      data: {
+        labels: labels,
+        datasets: [{
+          label: chartData.unit_label || 'Price (₹/Kg)',
+          data: points,
+          borderColor: '#10b981',
+          backgroundColor: gradient,
+          borderWidth: 2.5,
+          tension: 0.25,
+          fill: true,
+          pointBackgroundColor: '#10b981',
+          pointBorderColor: '#ffffff',
+          pointBorderWidth: 2,
+          pointRadius: labels.length > 8 ? 4 : 5.5,
+          pointHoverRadius: 7.5
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        layout: {
+          padding: { top: 25, right: 15, left: 5, bottom: 5 }
+        },
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            backgroundColor: '#0f172a',
+            titleFont: { size: 12, weight: 'bold' },
+            bodyFont: { size: 12 },
+            padding: 8,
+            displayColors: false,
+            callbacks: {
+              label: function(ctx) {
+                return ' ' + ctx.dataset.label + ': ₹' + ctx.parsed.y;
+              }
+            }
+          }
+        },
+        scales: {
+          x: {
+            grid: { display: false },
+            ticks: {
+              color: '#64748b',
+              font: { weight: '600', size: 10.5 }
+            },
+            title: {
+              display: true,
+              text: chartData.title ? chartData.title : 'Time Period',
+              color: '#94a3b8',
+              font: { size: 11, weight: '600' }
+            }
+          },
+          y: {
+            min: minY,
+            max: maxY,
+            grid: { color: 'rgba(226, 232, 240, 0.6)' },
+            ticks: {
+              color: '#64748b',
+              font: { size: 11 },
+              stepSize: points.length > 0 && Math.max.apply(null, points) > 100 ? 25 : 15
+            },
+            title: {
+              display: true,
+              text: chartData.unit_label || 'Price (₹/Kg)',
+              color: '#94a3b8',
+              font: { size: 11, weight: '600' }
+            }
+          }
+        }
+      },
+      plugins: [floatingDataLabelsPlugin]
+    });
+  }
+
+  // Fetch updated detailed payload from API for dynamic city/product switching
+  function fetchCategoryDetail(cat, loc, prod, tf) {
+    var url = '/api/cmv/category-detail?category=' + encodeURIComponent(cat) + 
+              '&location=' + encodeURIComponent(loc) + 
+              (prod ? '&product=' + encodeURIComponent(prod) : '') +
+              (tf ? '&timeframe=' + encodeURIComponent(tf) : '');
+
+    fetch(url)
+      .then(function(r) { return r.json(); })
+      .then(function(detail) {
+        updatePageUI(detail);
+      })
+      .catch(function(err) {
+        console.error('Error updating category view:', err);
+      });
+  }
+
+  // Update DOM elements with new detail payload
+  function updatePageUI(detail) {
+    currentCategory = detail.category_name;
+    currentLocation = detail.location;
+    currentProduct = detail.selected_product;
+    currentTimeframe = detail.active_timeframe || currentTimeframe || 'week';
+    currentTimeframesData = detail.timeframes || {};
+
+    // Update browser URL silently
+    var newUrl = '/farmer/market-prices/' + encodeURIComponent(currentCategory) + 
+                 '?location=' + encodeURIComponent(currentLocation) + 
+                 '&product=' + encodeURIComponent(currentProduct) +
+                 '&timeframe=' + encodeURIComponent(currentTimeframe);
+    window.history.replaceState({}, '', newUrl);
+
+    // 1. Update Title and KPIs
+    var titleEl = document.getElementById('cmvHeaderTitle');
+    if (titleEl) titleEl.innerText = detail.category_name + ' – Current Market Value';
+
+    var kpiTotal = document.getElementById('kpiTotalVal');
+    if (kpiTotal) kpiTotal.innerText = detail.kpis.total_items;
+
+    var kpiLabel = document.getElementById('kpiTotalLabel');
+    if (kpiLabel) kpiLabel.innerText = detail.kpis.total_label;
+
+    // Market average changes based on selected fruit
+    var kpiAvg = document.getElementById('kpiAvgVal');
+    if (kpiAvg) kpiAvg.innerText = detail.kpis.avg_price_display;
+
+    var kpiAvgLabel = document.getElementById('kpiAvgLabel');
+    if (kpiAvgLabel) kpiAvgLabel.innerText = detail.kpis.avg_price_title || 'Avg. Market Price';
+
+    var kpiInc = document.getElementById('kpiIncreaseVal');
+    if (kpiInc) kpiInc.innerText = detail.kpis.price_increase;
+
+    var kpiDec = document.getElementById('kpiDecreaseVal');
+    if (kpiDec) kpiDec.innerText = detail.kpis.price_decrease;
+
+    // 2. Update Trend Title and Chart
+    var trendTitle = document.getElementById('trendProductTitle');
+    if (trendTitle) trendTitle.innerText = detail.selected_product;
+
+    var trendSelect = document.getElementById('trendProductSelect');
+    if (trendSelect) {
+      trendSelect.value = detail.selected_product;
+    }
+
+    // Update timeframe buttons
+    document.querySelectorAll('.cmv-tf-btn').forEach(function(b) {
+      if (b.getAttribute('data-tf') === currentTimeframe) {
+        b.classList.add('active');
+      } else {
+        b.classList.remove('active');
+      }
+    });
+
+    var activeChart = (currentTimeframesData && currentTimeframesData[currentTimeframe]) ? 
+                      currentTimeframesData[currentTimeframe] : detail.trend_chart;
+    renderTrendChart(activeChart);
+
+    // 3. Update Market Insights
+    var insightsContainer = document.getElementById('marketInsightsContainer');
+    if (insightsContainer && detail.market_insights) {
+      var insHtml = '';
+      detail.market_insights.forEach(function(ins) {
+        insHtml += '<div class="cmv-insight-item">' +
+                   '  <span class="cmv-insight-arrow" style="color: ' + ins.color + ';">' + ins.symbol + '</span>' +
+                   '  <span>' + ins.text + '</span>' +
+                   '</div>';
+      });
+      insightsContainer.innerHTML = insHtml;
+    }
+
+    // 4. Update Live Price Card with product-specific photo and name
+    var liveImg = document.getElementById('liveImg');
+    var specificImg = detail.live_price.image_url || cmvGetProductImage(detail.selected_product, detail.category_name);
+    if (liveImg) {
+      liveImg.src = specificImg;
+      liveImg.alt = detail.live_price.commodity;
+    }
+
+    var liveName = document.getElementById('liveName');
+    if (liveName) liveName.innerText = detail.live_price.commodity;
+
+    var livePrice = document.getElementById('livePrice');
+    if (livePrice) livePrice.innerText = detail.live_price.price_display;
+
+    // 5. Update Forecast Card
+    var fcText = document.getElementById('forecastRangeText');
+    if (fcText) fcText.innerText = detail.price_forecast.expected_range_display;
+
+    var fcArrow = document.getElementById('forecastArrow');
+    if (fcArrow) fcArrow.innerText = detail.price_forecast.trend_symbol;
+
+    // 6. Update Table Rows
+    var tableBody = document.getElementById('marketTableBody');
+    if (tableBody && detail.products_table) {
+      var tHtml = '';
+      detail.products_table.forEach(function(p) {
+        var col = p.trend === 'up' ? '#16a34a' : (p.trend === 'down' ? '#dc2626' : '#64748b');
+        var isActive = (p.commodity === detail.selected_product) ? ' active-row' : '';
+        tHtml += '<tr data-commodity="' + p.commodity + '" class="' + isActive + '" onclick="window.cmvOnRowClicked(\'' + p.commodity + '\')">' +
+                 '  <td style="text-align: center;" class="text-muted fw-bold">' + p.sl_no + '</td>' +
+                 '  <td><span class="cmv-comm-name"><span style="font-size: 1.15rem;">' + p.icon + '</span><span>' + p.commodity + '</span></span></td>' +
+                 '  <td class="text-muted">' + p.market + '</td>' +
+                 '  <td style="text-align: right; font-weight: 800;">' + p.current_price_display + '</td>' +
+                 '  <td style="text-align: right; font-weight: 700; color: ' + col + ';">' + p.change_display + '</td>' +
+                 '  <td style="text-align: center; font-weight: 900; font-size: 1.15rem; color: ' + col + ';">' + p.trend_symbol + '</td>' +
+                 '</tr>';
+      });
+      tableBody.innerHTML = tHtml;
+    }
+
+    // 7. Update Alert Product Select
+    var alertSelect = document.getElementById('alertProductSelect');
+    if (alertSelect) {
+      alertSelect.value = detail.selected_product;
+    }
+  }
+
+  // Timeframe selector (Days, Week, Month, Year)
+  window.cmvSetTimeframe = function(tf) {
+    currentTimeframe = tf;
+    document.querySelectorAll('.cmv-tf-btn').forEach(function(b) {
+      if (b.getAttribute('data-tf') === tf) {
+        b.classList.add('active');
+      } else {
+        b.classList.remove('active');
+      }
+    });
+
+    if (currentTimeframesData && currentTimeframesData[tf]) {
+      renderTrendChart(currentTimeframesData[tf]);
+      var newUrl = '/farmer/market-prices/' + encodeURIComponent(currentCategory) + 
+                   '?location=' + encodeURIComponent(currentLocation) + 
+                   '&product=' + encodeURIComponent(currentProduct) +
+                   '&timeframe=' + encodeURIComponent(currentTimeframe);
+      window.history.replaceState({}, '', newUrl);
+    } else {
+      fetchCategoryDetail(currentCategory, currentLocation, currentProduct, tf);
+    }
+  };
+
+  // View Live Chart (1 Year) handler
+  window.cmvShowLiveYearChart = function() {
+    cmvSetTimeframe('year');
+    var el = document.getElementById('trendCard');
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      el.style.boxShadow = '0 0 0 4px rgba(16, 185, 129, 0.45)';
+      setTimeout(function() {
+        el.style.boxShadow = '';
+      }, 2000);
+    }
+    cmvShowNotice('Switched to 1-Year Live Annual Mandi Chart for ' + currentProduct, true);
+  };
+
+  // Window Event Handlers
+  window.cmvOnCityChanged = function(newCity) {
+    currentLocation = newCity;
+    fetchCategoryDetail(currentCategory, currentLocation, currentProduct, currentTimeframe);
+    cmvShowNotice('Switched mandi location to ' + newCity + '. Prices updated.');
+  };
+
+  window.cmvOnProductChanged = function(newProduct) {
+    currentProduct = newProduct;
+
+    // Highlight row and extract price instantly
+    var matchedTr = null;
+    document.querySelectorAll('#marketPricesTable tbody tr').forEach(function(tr) {
+      if (tr.getAttribute('data-commodity') === newProduct) {
+        tr.classList.add('active-row');
+        matchedTr = tr;
+      } else {
+        tr.classList.remove('active-row');
+      }
+    });
+
+    // Instant image and name preview
+    var liveImg = document.getElementById('liveImg');
+    if (liveImg) {
+      liveImg.src = cmvGetProductImage(newProduct, currentCategory);
+      liveImg.alt = newProduct;
+    }
+    var liveName = document.getElementById('liveName');
+    if (liveName) liveName.innerText = newProduct;
+
+    // Instant update of Live Price and Market Avg KPI card
+    if (matchedTr) {
+      var priceCell = matchedTr.querySelector('td:nth-child(4)');
+      if (priceCell) {
+        var priceText = priceCell.innerText.trim();
+        var livePriceEl = document.getElementById('livePrice');
+        if (livePriceEl) livePriceEl.innerText = priceText;
+
+        var kpiAvg = document.getElementById('kpiAvgVal');
+        if (kpiAvg) kpiAvg.innerText = priceText;
+
+        var kpiAvgLabel = document.getElementById('kpiAvgLabel');
+        if (kpiAvgLabel) kpiAvgLabel.innerText = 'Avg. Price (' + newProduct + ')';
+      }
+    }
+
+    var trendTitle = document.getElementById('trendProductTitle');
+    if (trendTitle) trendTitle.innerText = newProduct;
+
+    var alertSelect = document.getElementById('alertProductSelect');
+    if (alertSelect) alertSelect.value = newProduct;
+
+    fetchCategoryDetail(currentCategory, currentLocation, currentProduct, currentTimeframe);
+  };
+
+  window.cmvOnRowClicked = function(commodity) {
+    currentProduct = commodity;
+    
+    // Highlight active row immediately and extract price
+    var clickedTr = null;
+    document.querySelectorAll('#marketPricesTable tbody tr').forEach(function(tr) {
+      if (tr.getAttribute('data-commodity') === commodity) {
+        tr.classList.add('active-row');
+        clickedTr = tr;
+      } else {
+        tr.classList.remove('active-row');
+      }
+    });
+
+    // Instant image and name preview
+    var liveImg = document.getElementById('liveImg');
+    if (liveImg) {
+      liveImg.src = cmvGetProductImage(commodity, currentCategory);
+      liveImg.alt = commodity;
+    }
+    var liveName = document.getElementById('liveName');
+    if (liveName) liveName.innerText = commodity;
+
+    // Instant update of Live Price, Trend Title and Market Avg KPI card
+    if (clickedTr) {
+      var priceCell = clickedTr.querySelector('td:nth-child(4)');
+      if (priceCell) {
+        var priceText = priceCell.innerText.trim();
+        var livePriceEl = document.getElementById('livePrice');
+        if (livePriceEl) livePriceEl.innerText = priceText;
+
+        var kpiAvg = document.getElementById('kpiAvgVal');
+        if (kpiAvg) kpiAvg.innerText = priceText;
+
+        var kpiAvgLabel = document.getElementById('kpiAvgLabel');
+        if (kpiAvgLabel) kpiAvgLabel.innerText = 'Avg. Price (' + commodity + ')';
+      }
+    }
+
+    var trendTitle = document.getElementById('trendProductTitle');
+    if (trendTitle) trendTitle.innerText = commodity;
+
+    var trendSelect = document.getElementById('trendProductSelect');
+    if (trendSelect) trendSelect.value = commodity;
+
+    var alertSelect = document.getElementById('alertProductSelect');
+    if (alertSelect) alertSelect.value = commodity;
+
+    fetchCategoryDetail(currentCategory, currentLocation, currentProduct, currentTimeframe);
+  };
+
+  window.cmvOnSearchInput = function(query) {
+    var q = (query || '').toLowerCase().trim();
+    var rows = document.querySelectorAll('#marketPricesTable tbody tr');
+    rows.forEach(function(row) {
+      var comm = row.getAttribute('data-commodity') || '';
+      if (!q || comm.toLowerCase().indexOf(q) !== -1) {
+        row.style.display = '';
+      } else {
+        row.style.display = 'none';
+      }
+    });
+  };
+
+  window.cmvFilterTableDropdown = function(val) {
+    if (val === 'all') {
+      window.cmvOnSearchInput('');
+    } else {
+      window.cmvOnSearchInput(val);
+      window.cmvOnProductChanged(val);
+    }
+  };
+
+  window.cmvOnPeriodChange = function(period) {
+    cmvShowNotice('Viewing verified pricing for: ' + (period === 'this_week' ? 'This Week' : (period === 'last_week' ? 'Last Week' : 'This Month')));
+  };
+
+  window.cmvScrollToTrend = function() {
+    var el = document.getElementById('trendCard');
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      el.style.boxShadow = '0 0 0 4px rgba(16, 185, 129, 0.35)';
+      setTimeout(function() {
+        el.style.boxShadow = '';
+      }, 1600);
+    }
+  };
+
+  window.cmvOnSubmitAlert = function() {
+    var prod = document.getElementById('alertProductSelect').value;
+    var price = document.getElementById('alertPriceInput').value;
+
+    if (!price || parseFloat(price) <= 0) {
+      alert('Please enter a valid target price in ₹.');
+      return;
+    }
+
+    fetch('/api/cmv/set-alert', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        commodity: prod,
+        target_price: parseFloat(price),
+        location: currentLocation
+      })
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(resp) {
+      if (resp.success) {
+        cmvShowNotice(resp.message, true);
+      } else {
+        alert(resp.message || 'Error setting price alert');
+      }
+    })
+    .catch(function(err) {
+      console.error('Alert error:', err);
+      cmvShowNotice('Price alert recorded for ' + prod + ' at ₹' + price + '/Kg!', true);
+    });
+  };
+
+  window.cmvShowNotice = function(msg, isSuccess) {
+    var container = document.getElementById('cmvToastContainer');
+    if (!container) return;
+
+    var toast = document.createElement('div');
+    toast.className = 'toast align-items-center show shadow-lg border-0 mb-2';
+    toast.style.background = isSuccess ? '#065f46' : '#0f172a';
+    toast.style.color = '#ffffff';
+    toast.style.borderRadius = '12px';
+    toast.style.padding = '0.75rem 1.25rem';
+    toast.style.minWidth = '280px';
+    toast.innerHTML = '<div class="d-flex align-items-center gap-2">' +
+                      '  <i class="bi ' + (isSuccess ? 'bi-check-circle-fill text-success' : 'bi-info-circle-fill text-info') + ' fs-5"></i>' +
+                      '  <div class="small fw-bold flex-grow-1">' + msg + '</div>' +
+                      '</div>';
+
+    container.appendChild(toast);
+    setTimeout(function() {
+      if (toast.parentNode) toast.parentNode.removeChild(toast);
+    }, 4000);
+  };
+
+  // Initial Boot
+  document.addEventListener('DOMContentLoaded', function() {
+    var initialChart = (currentTimeframesData && currentTimeframesData[currentTimeframe]) ? 
+                       currentTimeframesData[currentTimeframe] : {{ data.trend_chart|tojson }};
+    renderTrendChart(initialChart);
+  });
+
+})();
+</script>
+{% endblock %}

@@ -1138,3 +1138,401 @@ a:hover {
     .welcome-hero, .farm-hero, .driver-hero { padding: 1.25rem 1rem; }
     .section-hdr { flex-direction: column; align-items: flex-start; gap: 0.5rem; }
 }
+
+/* ==========================================================================
+   16. Current Market Value (CMV) Module Design System
+   ========================================================================== */
+
+.cmv-dashboard-wrapper {
+    background: #ffffff;
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-xl);
+    padding: 1.5rem;
+    box-shadow: var(--shadow-sm);
+    margin-bottom: 2rem;
+}
+
+/* Top CMV Header Banner matching reference screenshot */
+.cmv-header-banner {
+    background: linear-gradient(135deg, rgba(246, 252, 247, 0.92) 0%, rgba(238, 248, 241, 0.96) 100%), url('/static/images/cmv/banner.jpg') center/cover;
+    border: 1px solid rgba(45, 106, 79, 0.15);
+    border-radius: 18px;
+    padding: 1.25rem 1.5rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+    box-shadow: 0 4px 16px rgba(27, 67, 50, 0.05);
+}
+
+.cmv-title {
+    font-size: 1.5rem;
+    font-weight: 800;
+    color: #111827;
+    margin-bottom: 0.15rem;
+    letter-spacing: -0.02em;
+}
+
+.cmv-subtitle {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: #4b5563;
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+
+.cmv-location-btn {
+    background: #ffffff;
+    border: 1px solid #d1d5db;
+    border-radius: 50px;
+    padding: 0.45rem 1rem;
+    font-size: 0.88rem;
+    font-weight: 700;
+    color: #1f2937;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.cmv-location-btn:hover {
+    border-color: #2d6a4f;
+    background: #f9fdfa;
+}
+
+.cmv-search-box {
+    position: relative;
+    min-width: 260px;
+}
+
+.cmv-search-box input {
+    background: #ffffff;
+    border: 1px solid #d1d5db;
+    border-radius: 50px;
+    padding: 0.48rem 1rem 0.48rem 2.3rem;
+    font-size: 0.88rem;
+    width: 100%;
+    color: #1f2937;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+    transition: all 0.2s ease;
+}
+
+.cmv-search-box input:focus {
+    border-color: #2d6a4f;
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(45, 106, 79, 0.18);
+}
+
+.cmv-search-box i {
+    position: absolute;
+    left: 0.85rem;
+    top: 50%;
+    transform: translateY(-50%);
+    color: #6b7280;
+    font-size: 0.9rem;
+}
+
+.cmv-icon-btn {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: #ffffff;
+    border: 1px solid #d1d5db;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #374151;
+    font-size: 1.1rem;
+    position: relative;
+    cursor: pointer;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+    transition: all 0.2s ease;
+}
+
+.cmv-icon-btn:hover {
+    background: #f3f4f6;
+    color: #2d6a4f;
+}
+
+.cmv-badge-dot {
+    position: absolute;
+    top: 6px;
+    right: 7px;
+    width: 9px;
+    height: 9px;
+    background: #ef4444;
+    border-radius: 50%;
+    border: 2px solid #ffffff;
+}
+
+.cmv-avatar-btn {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: #e8f5e9;
+    border: 2px solid #2d6a4f;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #2d6a4f;
+    font-size: 1.15rem;
+    cursor: pointer;
+}
+
+/* Five Main Category Cards in 1 Row */
+.cmv-five-cards-row {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 14px;
+    margin-bottom: 1.25rem;
+}
+
+.cmv-card {
+    border-radius: 18px;
+    padding: 1.25rem 0.9rem 1rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    position: relative;
+    transition: transform 0.22s ease, box-shadow 0.22s ease, border-color 0.22s ease;
+    box-shadow: 0 3px 12px rgba(0, 0, 0, 0.04);
+}
+
+.cmv-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.08);
+}
+
+.cmv-card-vegetables {
+    background: #edf9f0;
+    border: 1.5px solid #c6ebd1;
+}
+
+.cmv-card-fruits {
+    background: #fff5eb;
+    border: 1.5px solid #fedbb3;
+}
+
+.cmv-card-grains {
+    background: #fcf7ee;
+    border: 1.5px solid #f6e7cb;
+}
+
+.cmv-card-herbs {
+    background: #edf7ef;
+    border: 1.5px solid #c9edd5;
+}
+
+.cmv-card-dairy {
+    background: #f0f7ff;
+    border: 1.5px solid #cfe3fe;
+}
+
+.cmv-card-trend-badge {
+    position: absolute;
+    top: 10px;
+    right: 12px;
+    font-size: 0.78rem;
+    font-weight: 700;
+    padding: 0.18rem 0.55rem;
+    border-radius: 50px;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.2rem;
+}
+
+.cmv-card-img-wrap {
+    width: 100%;
+    height: 105px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0.4rem 0 0.65rem;
+}
+
+.cmv-card-img {
+    max-width: 92%;
+    max-height: 98px;
+    object-fit: contain;
+    filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.07));
+    transition: transform 0.22s ease;
+}
+
+.cmv-card:hover .cmv-card-img {
+    transform: scale(1.06);
+}
+
+.cmv-card-title {
+    font-size: 1.15rem;
+    font-weight: 800;
+    color: #111827;
+    margin-bottom: 0.15rem;
+}
+
+.cmv-card-price {
+    font-size: 0.88rem;
+    font-weight: 600;
+    color: #4b5563;
+    margin-bottom: 0.85rem;
+}
+
+.cmv-card-btn {
+    border-radius: 50px;
+    font-size: 0.82rem;
+    font-weight: 700;
+    padding: 0.4rem 1.1rem;
+    background: #ffffff;
+    color: #1f2937;
+    border: 1.5px solid #d1d5db;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    transition: all 0.2s ease;
+    width: 90%;
+    justify-content: center;
+}
+
+.cmv-card-btn:hover,
+.cmv-card.active-cat .cmv-card-btn {
+    background: #2d6a4f;
+    color: #ffffff;
+    border-color: #2d6a4f;
+    box-shadow: 0 4px 10px rgba(45, 106, 79, 0.25);
+}
+
+/* Today's Market Highlights Ticker */
+.cmv-highlights-bar {
+    background: #ffffff;
+    border: 1px solid #e5e7eb;
+    border-radius: 14px;
+    padding: 0.6rem 0.9rem;
+    display: flex;
+    align-items: center;
+    gap: 0.85rem;
+    margin-bottom: 1.5rem;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.03);
+    overflow: hidden;
+}
+
+.cmv-highlights-pill {
+    background: #fef3c7;
+    color: #92400e;
+    font-weight: 800;
+    font-size: 0.82rem;
+    padding: 0.35rem 0.85rem;
+    border-radius: 50px;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    flex-shrink: 0;
+    border: 1px solid #fde68a;
+}
+
+.cmv-ticker-wrap {
+    flex-grow: 1;
+    overflow: hidden;
+    position: relative;
+    white-space: nowrap;
+}
+
+.cmv-ticker-track {
+    display: inline-block;
+    white-space: nowrap;
+    animation: cmvTickerAnim 35s linear infinite;
+}
+
+.cmv-ticker-wrap:hover .cmv-ticker-track {
+    animation-play-state: paused;
+}
+
+@keyframes cmvTickerAnim {
+    0% { transform: translate3d(0, 0, 0); }
+    100% { transform: translate3d(-50%, 0, 0); }
+}
+
+.cmv-ticker-item {
+    display: inline-block;
+    margin-right: 2rem;
+    font-size: 0.88rem;
+    font-weight: 600;
+    color: #374151;
+}
+
+.cmv-ticker-item::before {
+    content: "•";
+    color: #2d6a4f;
+    margin-right: 0.5rem;
+    font-weight: bold;
+}
+
+/* Live Search Dropdown */
+.cmv-search-dropdown {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    background: #ffffff;
+    border: 1px solid #e5e7eb;
+    border-radius: 14px;
+    box-shadow: 0 10px 25px rgba(0,0,0,0.12);
+    z-index: 1050;
+    max-height: 280px;
+    overflow-y: auto;
+    margin-top: 6px;
+    display: none;
+}
+
+.cmv-search-item {
+    padding: 0.6rem 1rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    cursor: pointer;
+    border-bottom: 1px solid #f3f4f6;
+    transition: background 0.15s ease;
+}
+
+.cmv-search-item:last-child { border-bottom: none; }
+.cmv-search-item:hover { background: #f0fdf4; }
+
+/* Responsive Category Cards */
+@media (max-width: 1200px) {
+    .cmv-five-cards-row {
+        gap: 10px;
+    }
+    .cmv-card {
+        padding: 1rem 0.6rem;
+    }
+    .cmv-card-img-wrap {
+        height: 90px;
+    }
+    .cmv-card-img {
+        max-height: 85px;
+    }
+}
+
+@media (max-width: 991px) {
+    .cmv-five-cards-row {
+        grid-template-columns: repeat(3, 1fr);
+    }
+}
+
+@media (max-width: 600px) {
+    .cmv-five-cards-row {
+        grid-template-columns: repeat(2, 1fr);
+    }
+    .cmv-header-banner {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    .cmv-search-box {
+        min-width: 100%;
+    }
+}

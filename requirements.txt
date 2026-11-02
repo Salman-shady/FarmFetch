@@ -4,3 +4,6 @@ Flask-Bcrypt
 pymongo
 Flask-SocketIO
 python-dotenv
+gunicorn
+gevent
+gevent-websocket
