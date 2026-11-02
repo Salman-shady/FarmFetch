@@ -5,5 +5,4 @@ pymongo
 Flask-SocketIO
 python-dotenv
 gunicorn
-gevent
-gevent-websocket
+simple-websocket
